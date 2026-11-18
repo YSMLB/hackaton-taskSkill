@@ -6,7 +6,10 @@
     "dev": "next dev frontend",
     "build": "next build frontend",
     "start": "next start frontend",
-    "lint": "eslint"
+    "lint": "eslint",
+    "backend:dev": "go run ./backend",
+    "backend:build": "go build -o ./backend/stepflow-backend.exe ./backend",
+    "backend:test": "go test -v ./backend/..."
   },
   "dependencies": {
     "clsx": "^2.1.1",
