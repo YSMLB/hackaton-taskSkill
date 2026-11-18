@@ -1,0 +1,35 @@
+.anchor { position: relative; }
+.trigger { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 42px; min-height: 42px; border: 1px solid var(--line); border-radius: 9px; padding-inline: 7px; }
+.trigger:hover, .trigger[aria-expanded="true"] { background: var(--accent-soft); }
+.badge { background: var(--accent); color: var(--on-action); border-radius: 7px; padding: 1px 5px; font-size: 11px; }
+.panel {
+  position: fixed;
+  inset: 60px 28px auto auto;
+  margin: 0;
+  width: min(380px, calc(100vw - 24px));
+  max-height: calc(100dvh - 84px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--white);
+  color: var(--graphite);
+  box-shadow: 0 12px 42px var(--shadow);
+}
+.panel:popover-open { display: flex; flex-direction: column; }
+.panel::backdrop { background: transparent; }
+.heading { display: flex; align-items: center; justify-content: space-between; padding: 9px 13px 9px 18px; border-bottom: 1px solid var(--line); flex: none; }
+.heading h2 { font-size: 17px; letter-spacing: -.025em; }
+.markRead { align-self: flex-start; padding: 10px 18px; border: 0; font-size: 12px; font-weight: 650; color: var(--action); flex: none; }
+.list { list-style: none; padding: 0; margin: 0; overflow-y: auto; overscroll-behavior: contain; }
+.list a { display: flex; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.list a[data-unread="true"] { background: var(--accent-soft); }
+.list a:hover { background: var(--surface-soft); }
+.list a:focus-visible { outline-offset: -3px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex: none; margin-top: 8px; }
+[data-unread="true"] .dot { background: var(--accent); }
+.text { display: block; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.list time { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.empty { display: grid; justify-items: center; gap: 12px; padding: 36px 18px; color: var(--muted); font-size: 13px; }
+.showAll { display: block; flex: none; padding: 13px 18px; border-top: 1px solid var(--line); text-align: center; color: var(--action); font-size: 13px; font-weight: 700; }
+.showAll:hover { background: var(--accent-soft); }
+@media (max-width: 540px) { .panel { right: 12px; } }

@@ -7,9 +7,9 @@
     "build": "next build frontend",
     "start": "next start frontend",
     "lint": "eslint",
-    "backend:dev": "go run ./backend",
-    "backend:build": "go build -o ./backend/stepflow-backend.exe ./backend",
-    "backend:test": "go test -v ./backend/..."
+    "backend:dev": "go -C backend run .",
+    "backend:build": "go -C backend build -o stepflow-backend.exe .",
+    "backend:test": "go -C backend test ./..."
   },
   "dependencies": {
     "clsx": "^2.1.1",

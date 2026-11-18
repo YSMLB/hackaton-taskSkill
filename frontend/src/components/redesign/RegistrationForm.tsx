@@ -35,7 +35,7 @@ export function RegistrationForm({ onComplete, mode = 'register', onModeChange }
     {!signingIn && <div className="field">
       <label htmlFor={`${prefix}-role`}>Роль</label>
       <select id={`${prefix}-role`} value={role} onChange={event => setRole(event.target.value)}>
-        <option>Ученик</option><option>Автор</option><option>Эксперт</option><option value="Администратор">Администратор (демо)</option>
+        <option>Ученик</option><option>Автор</option><option value="Администратор">Администратор (демо)</option>
       </select>
     </div>}
     <button className="button button-red registration-submit" type="submit" disabled={pending}>{signingIn ? 'Войти' : 'Зарегистрироваться'} <ArrowUpRight size={18} /></button>

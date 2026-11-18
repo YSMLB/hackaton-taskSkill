@@ -26,6 +26,9 @@
       "@/*": [
         "./src/*"
       ],
+      "@backend/*": [
+        "../backend-ts/*"
+      ],
       "@shared/*": [
         "../shared/*"
       ]
@@ -38,6 +41,7 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts",
+    "../backend-ts/**/*.ts",
     "../shared/**/*.ts"
   ],
   "exclude": [

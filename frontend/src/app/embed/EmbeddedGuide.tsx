@@ -1,5 +1,6 @@
 'use client';
 
+import { StepMedia } from '@/components/redesign/StepMedia';
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Instruction } from '@shared/community';
@@ -17,7 +18,7 @@ export function EmbeddedGuide({ guide }: { guide: Pick<Instruction, 'id' | 'titl
     </section> : step && <section className="embed-step">
       <p className="small-note">Шаг {index + 1} из {guide.steps.length}</p>
       <div className="progress-track"><span style={{ width: `${index / guide.steps.length * 100}%` }} /></div>
-      <h2>{step.title}</h2><p className="embed-text">{step.text}</p>
+      <h2>{step.title}</h2><p className="embed-text">{step.text}</p><StepMedia step={step} />
       {step.code && <pre><code>{step.code}</code></pre>}
       <div className="checklist">{step.checks.map((check, i) => <label key={i}>
         <input type="checkbox" checked={checks[step.id]?.[i] || false} onChange={event => {

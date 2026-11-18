@@ -1,2 +1,3 @@
-import { WorkspacePage } from '@/components/redesign/Workspace';
-export default function Page() { return <WorkspacePage screen="author" />; }
+import { redirect } from 'next/navigation';
+
+export default function Page() { redirect('/profile?tab=author'); }

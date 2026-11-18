@@ -32,15 +32,15 @@ export function GuideCommunity({ guide }: { guide: Instruction }) {
           </button>
         </div>
       </div>
-      <div className={styles.fork}>
+      {!guide.teamId && <div className={styles.fork}>
         <span className={styles.forkIcon} aria-hidden="true"><GitFork size={21} strokeWidth={1.7} /></span>
         <div className={styles.forkCopy}>
           <h3 className={styles.heading}>Есть что улучшить?</h3>
           <p className={styles.description}>Создай свою версию. Оригинал останется без изменений.</p>
         </div>
         <button type="button" className={styles.forkButton} disabled={pending} onClick={async () => { const result = await send({ type: 'fork', guideId: guide.id }); if (result?.id) router.push(`/editor?id=${result.id}`); }}>Форк инструкции</button>
-      </div>
-      <ExpertReviews guide={guide} />
+      </div>}
+      {!guide.teamId && <ExpertReviews guide={guide} />}
     </>}
   </section>;
 }

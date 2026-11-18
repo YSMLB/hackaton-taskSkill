@@ -9,11 +9,15 @@ export interface Run {
   updatedAt?: number;
 }
 
-export interface Report { id: string; guideId: string; stepId: string; text: string; authorId?: string }
+export interface Report { id: string; guideId: string; stepId: string; text: string; authorId?: string; reply?: string }
 export interface ExpertReview { guideId: string; expertId: string; expertName: string; verified: boolean; text: string; createdAt: string }
 export interface StepMetric { stepId: string; started: number; completed: number; stopped: number; questions: number }
 export interface GuideMetrics { started: number; completed: number; reports: Report[]; steps: StepMetric[] }
+export interface Team { id: string; name: string; ownerId: string; memberIds: string[]; active: boolean }
+export interface Notice { id: string; text: string; href: string; read: boolean; createdAt: string }
 export interface WorkspaceData {
+  teams: Team[];
+  notices: Notice[];
   guides: Instruction[];
   runs: Record<string, Run>;
   votes: Record<string, Record<string, Vote>>;
@@ -23,13 +27,19 @@ export interface WorkspaceData {
 }
 export type ProfileEdits = Pick<Profile, 'name' | 'email' | 'avatar' | 'bio'>;
 export interface WorkspaceSnapshot { profile: Profile | null; data: WorkspaceData }
-export const emptyWorkspace: WorkspaceData = { guides: [], runs: {}, votes: {}, comments: [], reviews: [], analytics: {} };
+export const emptyWorkspace: WorkspaceData = { teams: [], notices: [], guides: [], runs: {}, votes: {}, comments: [], reviews: [], analytics: {} };
 export const defaultRun = (): Run => ({ current: 0, checked: {}, completed: [], visited: [] });
 
 export type Command =
   | { type: 'register'; profile: ProfileEdits & { role: string } }
   | { type: 'login'; email: string }
   | { type: 'logout' }
+  | { type: 'plan'; plan: 'free' | 'standard' | 'business' }
+  | { type: 'expert'; email: string; enabled: boolean }
+  | { type: 'team-create'; name: string }
+  | { type: 'team-member'; teamId: string; email: string; remove?: boolean }
+  | { type: 'notices-read'; id?: string }
+  | { type: 'reply'; guideId: string; reportId: string; text: string }
   | { type: 'profile'; edits: ProfileEdits }
   | { type: 'save'; guide: Instruction; submit: boolean }
   | { type: 'fork'; guideId: string }

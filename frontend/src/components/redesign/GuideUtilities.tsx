@@ -27,9 +27,9 @@ export function GuideUtilities({ guide }: { guide: Instruction }) {
     <VerifiedBadge guideId={guide.id} />
     <div className="utility-actions">
       <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(false)}><FileDown size={17} aria-hidden="true" />Скачать PDF</button>
-      {guide.status === 'published' && <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(true)}><Download size={17} aria-hidden="true" />Сохранить офлайн</button>}
+      {guide.status === 'published' && !guide.teamId && <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(true)}><Download size={17} aria-hidden="true" />Сохранить офлайн</button>}
     </div>
-    {guide.status === 'published' && <EmbedShare id={guide.id} />}
+    {guide.status === 'published' && !guide.teamId && <EmbedShare id={guide.id} />}
     {error && <p className="field-error" role="alert">{error}</p>}
   </div>;
 }

@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowUpRight, MessageCircle } from 'lucide-react';
 import type { Instruction } from '@shared/community';
 import { useStore } from './store';
 
 export function Analytics({ guide }: { guide?: Instruction }) {
-  const { data, refresh } = useStore();
+  const { data, refresh, send, pending } = useStore();
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   useEffect(() => { void refresh(); }, [refresh]);
   const stats = guide && data.analytics[guide.id];
   if (!guide || !stats) return <div className="empty-state">
@@ -37,7 +38,7 @@ export function Analytics({ guide }: { guide?: Instruction }) {
     </section>}
     <section className="analytics-table-panel">
       <h2>Прохождение по шагам</h2>
-      <p className="muted">Остановкой считаем 30 минут без действий на последнем незавершённом шаге. Предпросмотр автора не входит в статистику.</p>
+      <p className="muted">Здесь видно, на каком незавершённом шаге сейчас находится каждый читатель. Предпросмотр автора не входит в статистику.</p>
       <div className="table-scroll"><table>
         <thead><tr><th>Шаг</th><th>Открыли</th><th>Выполнили</th><th>Остановились</th><th>Попросили помощь</th></tr></thead>
         <tbody>{stats.steps.map((step, index) => <tr key={step.stepId} className={worst?.stepId === step.stepId ? 'problem-row' : undefined}>
@@ -52,6 +53,13 @@ export function Analytics({ guide }: { guide?: Instruction }) {
       {stats.reports.length ? stats.reports.map(report => <article key={report.id}>
         <span className="section-label">{guide.steps.find(step => step.id === report.stepId)?.title || 'Удалённый шаг'}</span>
         <p>{report.text}</p>
+        {report.reply ? <p><strong>Ответ:</strong> {report.reply}</p> : <form className="account-tool-form" onSubmit={async event => {
+          event.preventDefault();
+          await send({ type: 'reply', guideId: guide.id, reportId: report.id, text: answers[report.id] || '' });
+        }}>
+          <div className="field"><label htmlFor={'reply-' + report.id}>Ответить на вопрос</label><textarea id={'reply-' + report.id} maxLength={2000} value={answers[report.id] || ''} onChange={event => setAnswers({ ...answers, [report.id]: event.target.value })} /></div>
+          <button className="button button-outline" disabled={pending || !answers[report.id]?.trim()}>Отправить ответ</button>
+        </form>}
       </article>) : <p className="muted">Пока вопросов нет.</p>}
     </section>
   </>;

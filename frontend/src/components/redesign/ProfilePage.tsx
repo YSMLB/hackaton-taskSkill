@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState, type ChangeEvent, type FormEvent } from 'react';
-import { BookOpen, Camera, FolderOpen, LogOut } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
+import { BookOpen, Camera, FolderOpen, GitFork, LogOut, Settings2, UserRound } from 'lucide-react';
 import type { Profile } from '@shared/community';
 import { RegistrationGate, WorkShell } from './Chrome';
 import { ProfileAvatar } from './ProfileAvatar';
+import { SiteSettings } from './SiteSettings';
 import { localDrafts, useStore } from './store';
+import { Catalog } from './Workspace';
 import styles from './ProfilePage.module.css';
 
 async function preparePhoto(file: File) {
@@ -33,11 +35,20 @@ export function ProfilePage() {
   const { profile, ready } = useStore();
   if (!ready) return <div className="page-loading">Открываем профиль…</div>;
   if (!profile) return <RegistrationGate />;
-  return <WorkShell active="profile"><ProfileForm key={profile.id} profile={profile} /></WorkShell>;
+  return <WorkShell active="profile"><Suspense fallback={<div className="page-loading">Открываем профиль…</div>}><ProfileForm key={profile.id} profile={profile} /></Suspense></WorkShell>;
 }
 
 function ProfileForm({ profile }: { profile: Profile }) {
   const { send, pending, notify } = useStore();
+  const requested = useSearchParams().get('tab');
+  const tab = requested === 'library' || requested === 'author' || requested === 'forks' || requested === 'settings' ? requested : 'details';
+  const tabs = [
+    { id: 'details', title: 'Личные данные', Icon: UserRound },
+    { id: 'library', title: 'Мои прохождения', Icon: BookOpen },
+    { id: 'author', title: 'Мои инструкции', Icon: FolderOpen },
+    { id: 'forks', title: 'Форки', Icon: GitFork },
+    { id: 'settings', title: 'Настройки сайта', Icon: Settings2 },
+  ];
   const previousDrafts = localDrafts(profile.email);
   const router = useRouter();
   const [name, setName] = useState(profile.name);
@@ -80,6 +91,16 @@ function ProfileForm({ profile }: { profile: Profile }) {
     setStatus(result ? 'Изменения сохранены' : '');
   }
 
+  function reset() {
+    setName(profile.name);
+    setEmail(profile.email);
+    setBio(profile.bio || '');
+    setAvatar(profile.avatar);
+    setPhotoError('');
+    setError('');
+    setStatus('');
+  }
+
   return <div className={styles.page}>
     <h1>Мой профиль</h1>
     <div className={styles.layout}>
@@ -88,9 +109,10 @@ function ProfileForm({ profile }: { profile: Profile }) {
         <h2>{profile.name.trim() || 'Участник StepFlow'}</h2>
         <p>{profile.email}</p>
         <span className={styles.role}>{profile.role}</span>
-        <nav className={styles.links} aria-label="Мои разделы">
-          <Link href="/library"><BookOpen size={18} aria-hidden="true" />Мои прохождения</Link>
-          <Link href="/author"><FolderOpen size={18} aria-hidden="true" />Мои инструкции</Link>
+
+        <nav className={styles.tabs} aria-label="Разделы профиля">
+          {tabs.map(({ id, title, Icon }) => <Link key={id} href={id === 'details' ? '/profile' : '/profile?tab=' + id} aria-current={tab === id ? 'page' : undefined} scroll={false}><Icon size={17} aria-hidden="true" />{title}</Link>)}
+          <Link href="/team"><Settings2 size={17} aria-hidden="true" />Подписки и команды</Link>
         </nav>
         {previousDrafts.length > 0 && <button className="button button-outline" type="button" disabled={pending} onClick={async () => {
           const result = await send({ type: 'import', guides: previousDrafts.slice(0, 30) });
@@ -98,7 +120,8 @@ function ProfileForm({ profile }: { profile: Profile }) {
         }}>Перенести старые инструкции</button>}
         <button type="button" className={styles.logout} disabled={pending} onClick={async () => { if (await send({ type: 'logout' })) router.push('/'); }}><LogOut size={18} aria-hidden="true" />Выйти из аккаунта</button>
       </aside>
-      <form className={styles.panel} onSubmit={save} onChange={() => { setError(''); setStatus(''); }}>
+      <section className={styles.content}>
+        {tab === 'settings' ? <SiteSettings /> : tab !== 'details' ? <Catalog key={tab} screen={tab} embedded /> : <form className={styles.panel} onSubmit={save} onChange={() => { setError(''); setStatus(''); }}>
         <h2>Личные данные</h2>
         <div className={styles.photoRow}>
           <ProfileAvatar photo={avatar} name={name} size={80} />
@@ -128,10 +151,12 @@ function ProfileForm({ profile }: { profile: Profile }) {
         </div>
         {error && <p className={styles.error} role="alert">{error}</p>}
         <div className={styles.saveRow}>
-          <button type="submit" className="button button-red" disabled={!dirty || readingPhoto || pending}>Сохранить изменения</button>
+          <button type="submit" className="button button-red" disabled={!dirty || readingPhoto || pending}>{pending ? 'Сохраняем…' : 'Сохранить изменения'}</button>
+          {dirty && <button type="button" className="button button-outline" disabled={readingPhoto || pending} onClick={reset}>Отменить изменения</button>}
           <p className={styles.status} role="status">{status}</p>
         </div>
-      </form>
+      </form>}
+      </section>
     </div>
   </div>;
 }
