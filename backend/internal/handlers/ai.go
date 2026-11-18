@@ -73,7 +73,6 @@ func (s *Server) HandleGenerateGuide(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeJSON(w, http.StatusBadGateway, map[string]string{
 			"message": "ИИ-сервис не смог сгенерировать инструкцию. Попробуй изменить тему или создать вручную.",
-			"detail":  err.Error(),
 		}, nil)
 		return
 	}

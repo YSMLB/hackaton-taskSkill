@@ -3,7 +3,7 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  output: "standalone",
+  output: process.env.STEPFLOW_STANDALONE === "1" ? "standalone" : undefined,
   outputFileTracingRoot: path.resolve(__dirname, ".."),
   /* config options here */
   cacheComponents: true,

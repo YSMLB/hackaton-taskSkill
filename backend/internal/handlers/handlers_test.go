@@ -33,6 +33,7 @@ func setupTestServer(t *testing.T) (*handlers.Server, func()) {
 }
 
 func TestHandlersFlow(t *testing.T) {
+	t.Setenv("AI_API_KEY", "")
 	srv, cleanup := setupTestServer(t)
 	defer cleanup()
 

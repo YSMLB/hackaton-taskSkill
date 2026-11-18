@@ -19,6 +19,7 @@ const (
 )
 
 type Profile struct {
+	Plan   string `json:"plan,omitempty"`
 	ID     string `json:"id,omitempty"`
 	Name   string `json:"name"`
 	Email  string `json:"email"`
@@ -28,6 +29,8 @@ type Profile struct {
 }
 
 type Step struct {
+	ImageURL string   `json:"imageUrl,omitempty"`
+	VideoURL string   `json:"videoUrl,omitempty"`
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
 	Text     string   `json:"text"`
@@ -43,6 +46,9 @@ type SourceRef struct {
 }
 
 type Instruction struct {
+	TeamID         string            `json:"teamId,omitempty"`
+	Revision       int               `json:"revision,omitempty"`
+	Cover          string            `json:"cover,omitempty"`
 	ID             string            `json:"id"`
 	Title          string            `json:"title"`
 	Description    string            `json:"description"`
@@ -71,6 +77,7 @@ type StepComment struct {
 }
 
 type Report struct {
+	Reply    string `json:"reply,omitempty"`
 	ID       string `json:"id"`
 	GuideID  string `json:"guideId"`
 	StepID   string `json:"stepId"`
@@ -121,12 +128,14 @@ type GuideMetrics struct {
 }
 
 type WorkspaceData struct {
-	Guides    []Instruction            `json:"guides"`
-	Runs      map[string]Run           `json:"runs"`
+	Teams     []Team                     `json:"teams"`
+	Notices   []Notice                   `json:"notices"`
+	Guides    []Instruction              `json:"guides"`
+	Runs      map[string]Run             `json:"runs"`
 	Votes     map[string]map[string]Vote `json:"votes"`
-	Comments  []StepComment            `json:"comments"`
-	Reviews   []ExpertReview           `json:"reviews"`
-	Analytics map[string]GuideMetrics  `json:"analytics"`
+	Comments  []StepComment              `json:"comments"`
+	Reviews   []ExpertReview             `json:"reviews"`
+	Analytics map[string]GuideMetrics    `json:"analytics"`
 }
 
 type WorkspaceSnapshot struct {
@@ -142,14 +151,16 @@ type CommandResult struct {
 }
 
 type State struct {
-	Accounts map[string]Profile             `json:"accounts"`
-	Guides   []Instruction                  `json:"guides"`
-	Runs     map[string]map[string]Run      `json:"runs"`
-	Votes    map[string]map[string]Vote     `json:"votes"`
-	Comments []StepComment                  `json:"comments"`
-	Reports  []Report                       `json:"reports"`
-	Reviews  []ExpertReview                 `json:"reviews"`
-	Imports  map[string]map[string]string   `json:"imports"`
+	Teams    []Team                       `json:"teams"`
+	Notices  map[string][]Notice          `json:"notices"`
+	Accounts map[string]Profile           `json:"accounts"`
+	Guides   []Instruction                `json:"guides"`
+	Runs     map[string]map[string]Run    `json:"runs"`
+	Votes    map[string]map[string]Vote   `json:"votes"`
+	Comments []StepComment                `json:"comments"`
+	Reports  []Report                     `json:"reports"`
+	Reviews  []ExpertReview               `json:"reviews"`
+	Imports  map[string]map[string]string `json:"imports"`
 }
 
 func ActorID(p Profile) string {
@@ -172,7 +183,7 @@ func IsAdmin(p *Profile) bool {
 }
 
 func IsExpert(p *Profile) bool {
-	return p != nil && p.Role == "Эксперт"
+	return p != nil && p.Role == "Эксперт" && (p.Plan == "standard" || p.Plan == "business")
 }
 
 func IsOwner(guide Instruction, p *Profile) bool {
@@ -183,4 +194,19 @@ func CanView(guide Instruction, p *Profile) bool {
 	return guide.Status == StatusPublished ||
 		IsOwner(guide, p) ||
 		(IsAdmin(p) && (guide.Status == StatusPending || guide.Status == StatusRejected))
+}
+
+type Team struct {
+	ID        string   `json:"id"`
+	OwnerID   string   `json:"ownerId"`
+	Name      string   `json:"name"`
+	MemberIDs []string `json:"memberIds"`
+	Active    bool     `json:"active"`
+}
+type Notice struct {
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+	Href      string `json:"href"`
+	Read      bool   `json:"read"`
+	CreatedAt string `json:"createdAt"`
 }

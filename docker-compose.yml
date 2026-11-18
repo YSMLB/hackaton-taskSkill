@@ -3,20 +3,38 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: stepflow-app
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
-    volumes:
-      - workspace-data:/app/.stepflow
+      - STEPFLOW_BACKEND_URL=http://backend:8080
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+    volumes:
+      - workspace-data:/app/.stepflow
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
 
 volumes:
   workspace-data:

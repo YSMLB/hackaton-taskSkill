@@ -231,16 +231,9 @@ func SanitizeGuideOutput(raw RawGuideOutput, defaultCategory string, defaultMinu
 	}
 
 	steps := make([]models.Step, stepsLimit)
-	seenIDs := make(map[string]bool)
-
 	for i := 0; i < stepsLimit; i++ {
 		st := raw.Steps[i]
-		stepID := strings.TrimSpace(st.ID)
-		if stepID == "" || seenIDs[stepID] {
-			stepID = fmt.Sprintf("step-%d", i+1)
-		}
-		seenIDs[stepID] = true
-
+		stepID := fmt.Sprintf("step-%d", i+1)
 		stepTitle := strings.TrimSpace(st.Title)
 		if stepTitle == "" {
 			stepTitle = fmt.Sprintf("Шаг %d", i+1)

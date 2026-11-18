@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -23,14 +24,13 @@ import (
 const (
 	SessionCookie   = "stepflow-session"
 	SessionLifetime = 60 * 60 * 24 * 30 // 30 days in seconds
-	IdleMs          = 30 * 60 * 1000     // 30 minutes in milliseconds
 )
 
 var (
 	tokenRegex   = regexp.MustCompile(`^[a-f0-9]{64}$`)
 	guideIDRegex = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 	avatarRegex  = regexp.MustCompile(`^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$`)
-	roles        = []string{"Ученик", "Автор", "Эксперт", "Администратор"}
+	roles        = []string{"Ученик", "Автор", "Администратор"}
 )
 
 type WorkspaceError struct {
@@ -77,6 +77,7 @@ func New(dbPath string) (*Storage, error) {
 		return nil, err
 	}
 
+	db.SetMaxOpenConns(1)
 	// PRAGMA configuration
 	if _, err := db.Exec(`
 		PRAGMA busy_timeout = 5000;
@@ -152,6 +153,14 @@ func (s *Storage) loadState(tx *sql.Tx) (*models.State, error) {
 	var state models.State
 	if err := json.Unmarshal([]byte(payloadStr), &state); err != nil {
 		return nil, err
+	}
+
+	for i := range state.Guides {
+		for j := range state.Guides[i].Steps {
+			if state.Guides[i].Steps[j].Checks == nil {
+				state.Guides[i].Steps[j].Checks = []string{}
+			}
+		}
 	}
 
 	if state.Accounts == nil {
@@ -258,14 +267,11 @@ func parseGuide(val any, profile *models.Profile, previous *models.Instruction, 
 		checksRaw, ok := stepMap["checks"].([]any)
 		requireCondition(ok && len(checksRaw) <= 30, "В одном шаге может быть до 30 пунктов.")
 
-		var checks []string
+		checks := []string{}
 		for _, c := range checksRaw {
-			if cStr, ok := c.(string); ok {
-				cClean := strings.TrimSpace(cStr)
-				requireCondition(len([]rune(cClean)) <= 500, "Проверь длину полей.")
-				if cClean != "" {
-					checks = append(checks, cClean)
-				}
+			check := textValidation(c, 500, false)
+			if check != "" {
+				checks = append(checks, check)
 			}
 		}
 		requireCondition(!submit || len(checks) > 0, "Добавь пункт чек-листа в каждый шаг.")
@@ -287,6 +293,8 @@ func parseGuide(val any, profile *models.Profile, previous *models.Instruction, 
 		}
 
 		steps[i] = models.Step{
+			ImageURL: mediaURL(stepMap["imageUrl"]),
+			VideoURL: mediaURL(stepMap["videoUrl"]),
 			ID:       stepID,
 			Title:    stepTitle,
 			Text:     stepText,
@@ -320,9 +328,15 @@ func parseGuide(val any, profile *models.Profile, previous *models.Instruction, 
 		submittedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 
+	var cover string
 	var source *models.SourceRef
 	if previous != nil {
 		source = previous.Source
+		cover = previous.Cover
+	}
+	if value, present := raw["cover"]; present {
+		cover = textValidation(value, 300000, false)
+		requireCondition(cover == "" || (len(cover) >= 30 && strings.HasPrefix(cover, "data:image/jpeg;base64,/9j/") && avatarRegex.MatchString(cover)), "Загрузи корректное изображение для обложки.")
 	}
 
 	return models.Instruction{
@@ -336,12 +350,13 @@ func parseGuide(val any, profile *models.Profile, previous *models.Instruction, 
 		Owned:       true,
 		Status:      status,
 		Source:      source,
+		Cover:       cover,
 		Steps:       steps,
 		SubmittedAt: submittedAt,
 	}
 }
 
-func computeMetrics(state *models.State, guide models.Instruction, now int64) models.GuideMetrics {
+func computeMetrics(state *models.State, guide models.Instruction) models.GuideMetrics {
 	guideRunsMap := state.Runs[guide.ID]
 	var runs []models.Run
 	for actor, r := range guideRunsMap {
@@ -350,7 +365,7 @@ func computeMetrics(state *models.State, guide models.Instruction, now int64) mo
 		}
 	}
 
-	var reports []models.Report
+	reports := []models.Report{}
 	for _, rep := range state.Reports {
 		if rep.GuideID == guide.ID && rep.AuthorID != guide.OwnerID {
 			reports = append(reports, rep)
@@ -426,7 +441,7 @@ func computeMetrics(state *models.State, guide models.Instruction, now int64) mo
 				stepCompleted++
 			}
 
-			if run.LastStepID == step.ID && !completed && (now-run.UpdatedAt >= IdleMs) {
+			if run.LastStepID == step.ID && !completed {
 				stepStopped++
 			}
 		}
@@ -456,11 +471,11 @@ func computeMetrics(state *models.State, guide models.Instruction, now int64) mo
 }
 
 func buildSnapshot(state *models.State, profile *models.Profile) models.WorkspaceSnapshot {
-	var viewableGuides []models.Instruction
+	viewableGuides := []models.Instruction{}
 	publicIDs := make(map[string]bool)
 
 	for _, g := range state.Guides {
-		if models.CanView(g, profile) {
+		if visible(state, g, profile) {
 			viewableGuides = append(viewableGuides, g)
 			if g.Status == models.StatusPublished {
 				publicIDs[g.ID] = true
@@ -470,17 +485,27 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 
 	myRuns := make(map[string]models.Run)
 	analytics := make(map[string]models.GuideMetrics)
-	now := time.Now().UnixMilli()
+	teams := []models.Team{}
+	notices := []models.Notice{}
 
 	var actor string
 	if profile != nil {
 		actor = models.ActorID(*profile)
+		for _, team := range state.Teams {
+			if slices.Contains(team.MemberIDs, actor) {
+				teams = append(teams, team)
+			}
+		}
+		notices = append(notices, state.Notices[actor]...)
 	}
 
 	for _, guide := range viewableGuides {
 		if actor != "" {
 			if guideRuns, ok := state.Runs[guide.ID]; ok {
 				if run, hasRun := guideRuns[actor]; hasRun {
+					if run.Completed == nil {
+						run.Completed = []string{}
+					}
 					currentIdx := -1
 					for i, s := range guide.Steps {
 						if s.ID == run.LastStepID {
@@ -498,18 +523,18 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 		}
 
 		if models.IsOwner(guide, profile) {
-			analytics[guide.ID] = computeMetrics(state, guide, now)
+			analytics[guide.ID] = computeMetrics(state, guide)
 		}
 	}
 
-	var filteredComments []models.StepComment
+	filteredComments := []models.StepComment{}
 	for _, c := range state.Comments {
 		if publicIDs[c.GuideID] {
 			filteredComments = append(filteredComments, c)
 		}
 	}
 
-	var filteredReviews []models.ExpertReview
+	filteredReviews := []models.ExpertReview{}
 	for _, r := range state.Reviews {
 		if publicIDs[r.GuideID] {
 			filteredReviews = append(filteredReviews, r)
@@ -526,6 +551,8 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 	return models.WorkspaceSnapshot{
 		Profile: profile,
 		Data: models.WorkspaceData{
+			Teams:     teams,
+			Notices:   notices,
 			Guides:    viewableGuides,
 			Runs:      myRuns,
 			Votes:     filteredVotes,
@@ -571,7 +598,7 @@ func (s *Storage) GetPublishedGuide(id string) (*models.Instruction, error) {
 	}
 
 	for _, g := range state.Guides {
-		if g.ID == id && g.Status == models.StatusPublished {
+		if g.ID == id && g.TeamID == "" && g.Status == models.StatusPublished {
 			cp := g
 			return &cp, nil
 		}
@@ -602,11 +629,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 	if err != nil {
 		return nil, nil, err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer tx.Rollback()
 
 	state, err := s.loadState(tx)
 	if err != nil {
@@ -631,14 +654,14 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		if registering {
 			rawProfile, ok := command["profile"].(map[string]any)
 			requireCondition(ok, "Некорректные данные.")
-			email = textValidation(rawProfile["email"], 254, true)
+			email = textValidation(rawProfile["email"], 254, false)
 			role = textValidation(rawProfile["role"], 40, true)
 			name = textValidation(rawProfile["name"], 100, false)
 			if name == "" {
 				name = "Участник"
 			}
 		} else {
-			email = textValidation(command["email"], 254, true)
+			email = textValidation(command["email"], 254, false)
 			role = "Ученик"
 			name = "Участник"
 		}
@@ -695,6 +718,10 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		requireCondition(current != nil, "Войди в аккаунт, чтобы продолжить.", 401)
 		actor := models.ActorID(*current)
 
+		if changeAccount(state, current, cmdType, command) {
+			break
+		}
+
 		if cmdType == "profile" {
 			edits, ok := command["edits"].(map[string]any)
 			requireCondition(ok, "Некорректные данные.")
@@ -740,9 +767,24 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			var previous *models.Instruction
 			if prevIndex != -1 {
 				previous = &state.Guides[prevIndex]
-				requireCondition(models.IsOwner(*previous, current), "Редактировать может только автор.", 403)
+
 			}
 
+			var teamID string
+			if previous != nil {
+				teamID = previous.TeamID
+			} else if rawGuide["teamId"] != nil {
+				teamID = validateGuideID(rawGuide["teamId"])
+			}
+			team := memberTeam(state, teamID, actor)
+			requireCondition(teamID == "" || (team != nil && team.Active), "Редактирование доступно участникам активной команды.", 403)
+			revision := 1
+			if previous != nil {
+				requireCondition(team != nil || models.IsOwner(*previous, current), "Редактировать может только автор.", 403)
+				incoming, ok := rawGuide["revision"].(float64)
+				requireCondition((ok || rawGuide["revision"] == nil) && incoming == float64(previous.Revision), "Кто-то уже сохранил правки. Обнови редактор.", 409)
+				revision = previous.Revision + 1
+			}
 			id := requested
 			if previous == nil {
 				id = RandomUUID()
@@ -750,6 +792,19 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 
 			submit, _ := command["submit"].(bool)
 			guide := parseGuide(rawGuide, current, previous, submit, id)
+			guide.Revision = revision
+			if team != nil {
+				guide.TeamID = team.ID
+				if submit {
+					guide.Status = models.StatusPublished
+				}
+				if previous != nil {
+					guide.OwnerID, guide.Author = previous.OwnerID, previous.Author
+				}
+				for _, recipient := range team.MemberIDs {
+					notify(state, recipient, actor, "В команде обновлена инструкция «"+guide.Title+"»", "/team")
+				}
+			}
 
 			if previous != nil {
 				state.Guides[prevIndex] = guide
@@ -808,7 +863,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			}
 		}
 
-		requireCondition(guide != nil && models.CanView(*guide, current), "Инструкция недоступна.", 404)
+		requireCondition(guide != nil && visible(state, *guide, current), "Инструкция недоступна.", 404)
 
 		if cmdType == "moderate" {
 			requireCondition(models.IsAdmin(current), "Решение принимает администратор.", 403)
@@ -826,13 +881,29 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			}
 			guide.ReviewedAt = time.Now().UTC().Format(time.RFC3339)
 			guide.ReviewedBy = current.Name
+			message := "Инструкцию вернули на доработку"
+			if decision == "approve" {
+				message = "Инструкция опубликована"
+			}
+			notify(state, guide.OwnerID, actor, message, "/editor?id="+key)
 			state.Guides[guideIndex] = *guide
 			break
 		}
 
 		requireCondition(guide.Status == models.StatusPublished, "Действие доступно после публикации.", 403)
 
+		if cmdType == "reply" {
+			requireCondition(models.IsOwner(*guide, current), "Ответить на вопрос может автор.", 403)
+			index := slices.IndexFunc(state.Reports, func(r models.Report) bool { return r.GuideID == key && r.ID == command["reportId"] })
+			requireCondition(index >= 0, "Вопрос не найден.", 404)
+			report := &state.Reports[index]
+			report.Reply = textValidation(command["text"], 2000, true)
+			notify(state, report.AuthorID, actor, "Автор ответил на вопрос: "+report.Reply, "/guide?id="+key)
+			break
+		}
+
 		if cmdType == "fork" {
+			requireCondition(guide.TeamID == "", "Командная инструкция доступна внутри команды.", 403)
 			outID = RandomUUID()
 			title := guide.Title
 			if len([]rune(title)) > 230 {
@@ -849,6 +920,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			forkedGuide := models.Instruction{
 				ID:          outID,
 				Title:       title,
+				Cover:       guide.Cover,
 				Description: guide.Description,
 				Category:    guide.Category,
 				Minutes:     guide.Minutes,
@@ -883,7 +955,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		}
 
 		if cmdType == "review" {
-			requireCondition(models.IsExpert(current) && !models.IsOwner(*guide, current), "Рецензию может оставить эксперт на чужую инструкцию.", 403)
+			requireCondition(models.IsExpert(current) && guide.TeamID == "" && !models.IsOwner(*guide, current), "Рецензию может оставить эксперт на чужую инструкцию.", 403)
 			verified, ok := command["verified"].(bool)
 			requireCondition(ok, "Выбери результат проверки.")
 			text := textValidation(command["text"], 2000, true)
@@ -904,6 +976,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 				}
 			}
 			state.Reviews = append([]models.ExpertReview{review}, newReviews...)
+			notify(state, guide.OwnerID, actor, "Эксперт оставил рецензию", "/guide?id="+key)
 			break
 		}
 
@@ -927,6 +1000,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			entryID := RandomUUID()
 
 			if cmdType == "comment" {
+				notify(state, guide.OwnerID, actor, "Новый комментарий к шагу «"+step.Title+"»", "/guide?id="+key)
 				state.Comments = append(state.Comments, models.StepComment{
 					ID:         entryID,
 					GuideID:    key,
@@ -937,6 +1011,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 					CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 				})
 			} else {
+				notify(state, guide.OwnerID, actor, "Новый вопрос к шагу «"+step.Title+"»", "/analytics?id="+key)
 				state.Reports = append(state.Reports, models.Report{
 					ID:       entryID,
 					GuideID:  key,
@@ -987,11 +1062,12 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			for len(ticks) < len(step.Checks) {
 				ticks = append(ticks, false)
 			}
+			ticks = ticks[:len(step.Checks)]
 			ticks[checkIdx] = checked
 			run.Checked[step.ID] = ticks
 
 			if !checked {
-				var newCompleted []string
+				newCompleted := []string{}
 				for _, c := range run.Completed {
 					if c != step.ID {
 						newCompleted = append(newCompleted, c)

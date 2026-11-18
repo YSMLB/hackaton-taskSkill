@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev frontend",
+    "dev": "node scripts/start.mjs dev",
     "build": "next build frontend --webpack",
-    "start": "next start frontend",
+    "start": "node scripts/start.mjs start",
     "lint": "eslint",
     "backend:dev": "go -C backend run .",
     "backend:build": "go -C backend build -o stepflow-backend.exe .",

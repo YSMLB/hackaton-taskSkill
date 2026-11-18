@@ -18,7 +18,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-RUN npm run build
+RUN STEPFLOW_STANDALONE=1 npm run build
 
 # Step 3: Production runner
 FROM base AS runner
@@ -28,11 +28,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-ENV STEPFLOW_DB_PATH="/app/.stepflow/stepflow.sqlite"
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-RUN mkdir -p /app/.stepflow && chown nextjs:nodejs /app/.stepflow
 
 # Copy static assets and standalone server
 COPY --from=builder /app/frontend/public ./frontend/public
