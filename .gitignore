@@ -45,3 +45,5 @@ frontend/next-env.d.ts
 !.env.example
 !frontend/.env.example
 /.stepflow/
+*.exe
+

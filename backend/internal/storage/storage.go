@@ -1,0 +1,1077 @@
+package storage
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	_ "modernc.org/sqlite"
+	"stepflow/backend/internal/data"
+	"stepflow/backend/internal/models"
+)
+
+const (
+	SessionCookie   = "stepflow-session"
+	SessionLifetime = 60 * 60 * 24 * 30 // 30 days in seconds
+	IdleMs          = 30 * 60 * 1000     // 30 minutes in milliseconds
+)
+
+var (
+	tokenRegex   = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	guideIDRegex = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
+	avatarRegex  = regexp.MustCompile(`^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$`)
+	roles        = []string{"Ученик", "Автор", "Эксперт", "Администратор"}
+)
+
+type WorkspaceError struct {
+	Message string
+	Status  int
+}
+
+func (e *WorkspaceError) Error() string {
+	return e.Message
+}
+
+func NewWorkspaceError(msg string, status ...int) *WorkspaceError {
+	s := 400
+	if len(status) > 0 {
+		s = status[0]
+	}
+	return &WorkspaceError{Message: msg, Status: s}
+}
+
+type Storage struct {
+	db *sql.DB
+	mu sync.Mutex
+}
+
+func New(dbPath string) (*Storage, error) {
+	if dbPath == "" {
+		dbPath = os.Getenv("STEPFLOW_DB_PATH")
+		if dbPath == "" {
+			dbPath = ".stepflow/stepflow.sqlite"
+		}
+	}
+
+	absPath, err := filepath.Abs(dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+		return nil, err
+	}
+
+	db, err := sql.Open("sqlite", absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// PRAGMA configuration
+	if _, err := db.Exec(`
+		PRAGMA busy_timeout = 5000;
+		PRAGMA journal_mode = WAL;
+		CREATE TABLE IF NOT EXISTS workspace (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, account TEXT NOT NULL, expires INTEGER NOT NULL);
+	`); err != nil {
+		return nil, err
+	}
+
+	// Check if seeded
+	var count int
+	row := db.QueryRow("SELECT COUNT(*) FROM workspace WHERE id = 1")
+	if err := row.Scan(&count); err != nil || count == 0 {
+		seed := models.State{
+			Accounts: make(map[string]models.Profile),
+			Guides:   data.InitialGuides,
+			Runs:     make(map[string]map[string]models.Run),
+			Votes:    make(map[string]map[string]models.Vote),
+			Comments: []models.StepComment{},
+			Reports:  []models.Report{},
+			Reviews:  []models.ExpertReview{},
+			Imports:  make(map[string]map[string]string),
+		}
+		seedBytes, err := json.Marshal(seed)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := db.Exec("INSERT OR IGNORE INTO workspace VALUES (1, ?)", string(seedBytes)); err != nil {
+			return nil, err
+		}
+	}
+
+	return &Storage{db: db}, nil
+}
+
+func (s *Storage) Close() error {
+	return s.db.Close()
+}
+
+func Digest(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
+
+func RandomUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40 // Version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // Variant RFC4122
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+func RandomToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func (s *Storage) loadState(tx *sql.Tx) (*models.State, error) {
+	var payloadStr string
+	var err error
+	if tx != nil {
+		err = tx.QueryRow("SELECT payload FROM workspace WHERE id = 1").Scan(&payloadStr)
+	} else {
+		err = s.db.QueryRow("SELECT payload FROM workspace WHERE id = 1").Scan(&payloadStr)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var state models.State
+	if err := json.Unmarshal([]byte(payloadStr), &state); err != nil {
+		return nil, err
+	}
+
+	if state.Accounts == nil {
+		state.Accounts = make(map[string]models.Profile)
+	}
+	if state.Runs == nil {
+		state.Runs = make(map[string]map[string]models.Run)
+	}
+	if state.Votes == nil {
+		state.Votes = make(map[string]map[string]models.Vote)
+	}
+	if state.Imports == nil {
+		state.Imports = make(map[string]map[string]string)
+	}
+	if state.Comments == nil {
+		state.Comments = []models.StepComment{}
+	}
+	if state.Reports == nil {
+		state.Reports = []models.Report{}
+	}
+	if state.Reviews == nil {
+		state.Reviews = []models.ExpertReview{}
+	}
+
+	return &state, nil
+}
+
+func (s *Storage) profileFor(tx *sql.Tx, state *models.State, token string) *models.Profile {
+	if token == "" || !tokenRegex.MatchString(token) {
+		return nil
+	}
+
+	hashed := Digest(token)
+	now := time.Now().UnixMilli()
+
+	var account string
+	var err error
+	if tx != nil {
+		err = tx.QueryRow("SELECT account FROM sessions WHERE token = ? AND expires > ?", hashed, now).Scan(&account)
+	} else {
+		err = s.db.QueryRow("SELECT account FROM sessions WHERE token = ? AND expires > ?", hashed, now).Scan(&account)
+	}
+
+	if err != nil {
+		return nil
+	}
+
+	profile, ok := state.Accounts[account]
+	if !ok {
+		return nil
+	}
+	return &profile
+}
+
+func emailKey(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func findAccount(state *models.State, email string) *models.Profile {
+	target := emailKey(email)
+	for _, acc := range state.Accounts {
+		if emailKey(acc.Email) == target {
+			cp := acc
+			return &cp
+		}
+	}
+	return nil
+}
+
+func requireCondition(cond bool, msg string, status ...int) {
+	if !cond {
+		panic(NewWorkspaceError(msg, status...))
+	}
+}
+
+func textValidation(val any, maxLen int, required bool) string {
+	str, ok := val.(string)
+	requireCondition(ok && len([]rune(str)) <= maxLen, "Проверь длину полей.")
+	clean := strings.TrimSpace(str)
+	requireCondition(!required || clean != "", "Заполни обязательные поля.")
+	return clean
+}
+
+func validateGuideID(val any) string {
+	id := textValidation(val, 100, true)
+	requireCondition(guideIDRegex.MatchString(id), "Некорректный идентификатор.")
+	return id
+}
+
+func parseGuide(val any, profile *models.Profile, previous *models.Instruction, submit bool, id string) models.Instruction {
+	raw, ok := val.(map[string]any)
+	requireCondition(ok, "Некорректные данные.")
+
+	stepsRaw, ok := raw["steps"].([]any)
+	requireCondition(ok && len(stepsRaw) >= 1 && len(stepsRaw) <= 60, "В инструкции должно быть от 1 до 60 шагов.")
+
+	steps := make([]models.Step, len(stepsRaw))
+	stepIDs := make(map[string]bool)
+
+	for i, item := range stepsRaw {
+		stepMap, ok := item.(map[string]any)
+		requireCondition(ok, "Некорректные данные.")
+
+		checksRaw, ok := stepMap["checks"].([]any)
+		requireCondition(ok && len(checksRaw) <= 30, "В одном шаге может быть до 30 пунктов.")
+
+		var checks []string
+		for _, c := range checksRaw {
+			if cStr, ok := c.(string); ok {
+				cClean := strings.TrimSpace(cStr)
+				requireCondition(len([]rune(cClean)) <= 500, "Проверь длину полей.")
+				if cClean != "" {
+					checks = append(checks, cClean)
+				}
+			}
+		}
+		requireCondition(!submit || len(checks) > 0, "Добавь пункт чек-листа в каждый шаг.")
+
+		stepID := validateGuideID(stepMap["id"])
+		stepTitle := textValidation(stepMap["title"], 200, submit)
+		stepText := textValidation(stepMap["text"], 16000, submit)
+
+		var codePtr *string
+		if codeVal, exists := stepMap["code"]; exists && codeVal != nil {
+			c := textValidation(codeVal, 16000, false)
+			codePtr = &c
+		}
+
+		var filenamePtr *string
+		if fnVal, exists := stepMap["filename"]; exists && fnVal != nil {
+			f := textValidation(fnVal, 200, false)
+			filenamePtr = &f
+		}
+
+		steps[i] = models.Step{
+			ID:       stepID,
+			Title:    stepTitle,
+			Text:     stepText,
+			Code:     codePtr,
+			Filename: filenamePtr,
+			Checks:   checks,
+		}
+		stepIDs[stepID] = true
+	}
+
+	requireCondition(len(stepIDs) == len(steps), "Шаги должны иметь разные идентификаторы.")
+
+	minutesFloat, ok := raw["minutes"].(float64)
+	requireCondition(ok && !math.IsNaN(minutesFloat) && !math.IsInf(minutesFloat, 0), "Укажи время прохождения.")
+	minutes := int(math.Min(1440, math.Max(1, math.Round(minutesFloat))))
+
+	title := textValidation(raw["title"], 250, submit)
+	if title == "" {
+		title = "Без названия"
+	}
+	desc := textValidation(raw["description"], 4000, submit)
+	cat := textValidation(raw["category"], 100, false)
+	if cat == "" {
+		cat = "Учёба"
+	}
+
+	status := models.StatusDraft
+	var submittedAt string
+	if submit {
+		status = models.StatusPending
+		submittedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	var source *models.SourceRef
+	if previous != nil {
+		source = previous.Source
+	}
+
+	return models.Instruction{
+		ID:          id,
+		Title:       title,
+		Description: desc,
+		Category:    cat,
+		Minutes:     minutes,
+		Author:      profile.Name,
+		OwnerID:     models.ActorID(*profile),
+		Owned:       true,
+		Status:      status,
+		Source:      source,
+		Steps:       steps,
+		SubmittedAt: submittedAt,
+	}
+}
+
+func computeMetrics(state *models.State, guide models.Instruction, now int64) models.GuideMetrics {
+	guideRunsMap := state.Runs[guide.ID]
+	var runs []models.Run
+	for actor, r := range guideRunsMap {
+		if actor != guide.OwnerID {
+			runs = append(runs, r)
+		}
+	}
+
+	var reports []models.Report
+	for _, rep := range state.Reports {
+		if rep.GuideID == guide.ID && rep.AuthorID != guide.OwnerID {
+			reports = append(reports, rep)
+		}
+	}
+
+	var startedRuns []models.Run
+	for _, run := range runs {
+		hasVisited := false
+		for _, step := range guide.Steps {
+			for _, v := range run.Visited {
+				if v == step.ID {
+					hasVisited = true
+					break
+				}
+			}
+			if hasVisited {
+				break
+			}
+		}
+		if hasVisited {
+			startedRuns = append(startedRuns, run)
+		}
+	}
+
+	completedCount := 0
+	for _, run := range startedRuns {
+		allCompleted := true
+		for _, step := range guide.Steps {
+			found := false
+			for _, c := range run.Completed {
+				if c == step.ID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				allCompleted = false
+				break
+			}
+		}
+		if allCompleted {
+			completedCount++
+		}
+	}
+
+	stepMetrics := make([]models.StepMetric, len(guide.Steps))
+	for i, step := range guide.Steps {
+		stepStarted := 0
+		stepCompleted := 0
+		stepStopped := 0
+
+		for _, run := range startedRuns {
+			visited := false
+			for _, v := range run.Visited {
+				if v == step.ID {
+					visited = true
+					break
+				}
+			}
+			if visited {
+				stepStarted++
+			}
+
+			completed := false
+			for _, c := range run.Completed {
+				if c == step.ID {
+					completed = true
+					break
+				}
+			}
+			if completed {
+				stepCompleted++
+			}
+
+			if run.LastStepID == step.ID && !completed && (now-run.UpdatedAt >= IdleMs) {
+				stepStopped++
+			}
+		}
+
+		uniqueQuestionAuthors := make(map[string]bool)
+		for _, rep := range reports {
+			if rep.StepID == step.ID && rep.AuthorID != "" {
+				uniqueQuestionAuthors[rep.AuthorID] = true
+			}
+		}
+
+		stepMetrics[i] = models.StepMetric{
+			StepID:    step.ID,
+			Started:   stepStarted,
+			Completed: stepCompleted,
+			Stopped:   stepStopped,
+			Questions: len(uniqueQuestionAuthors),
+		}
+	}
+
+	return models.GuideMetrics{
+		Started:   len(startedRuns),
+		Completed: completedCount,
+		Reports:   reports,
+		Steps:     stepMetrics,
+	}
+}
+
+func buildSnapshot(state *models.State, profile *models.Profile) models.WorkspaceSnapshot {
+	var viewableGuides []models.Instruction
+	publicIDs := make(map[string]bool)
+
+	for _, g := range state.Guides {
+		if models.CanView(g, profile) {
+			viewableGuides = append(viewableGuides, g)
+			if g.Status == models.StatusPublished {
+				publicIDs[g.ID] = true
+			}
+		}
+	}
+
+	myRuns := make(map[string]models.Run)
+	analytics := make(map[string]models.GuideMetrics)
+	now := time.Now().UnixMilli()
+
+	var actor string
+	if profile != nil {
+		actor = models.ActorID(*profile)
+	}
+
+	for _, guide := range viewableGuides {
+		if actor != "" {
+			if guideRuns, ok := state.Runs[guide.ID]; ok {
+				if run, hasRun := guideRuns[actor]; hasRun {
+					currentIdx := -1
+					for i, s := range guide.Steps {
+						if s.ID == run.LastStepID {
+							currentIdx = i
+							break
+						}
+					}
+					if currentIdx < 0 {
+						currentIdx = 0
+					}
+					run.Current = currentIdx
+					myRuns[guide.ID] = run
+				}
+			}
+		}
+
+		if models.IsOwner(guide, profile) {
+			analytics[guide.ID] = computeMetrics(state, guide, now)
+		}
+	}
+
+	var filteredComments []models.StepComment
+	for _, c := range state.Comments {
+		if publicIDs[c.GuideID] {
+			filteredComments = append(filteredComments, c)
+		}
+	}
+
+	var filteredReviews []models.ExpertReview
+	for _, r := range state.Reviews {
+		if publicIDs[r.GuideID] {
+			filteredReviews = append(filteredReviews, r)
+		}
+	}
+
+	filteredVotes := make(map[string]map[string]models.Vote)
+	for gid, vmap := range state.Votes {
+		if publicIDs[gid] {
+			filteredVotes[gid] = vmap
+		}
+	}
+
+	return models.WorkspaceSnapshot{
+		Profile: profile,
+		Data: models.WorkspaceData{
+			Guides:    viewableGuides,
+			Runs:      myRuns,
+			Votes:     filteredVotes,
+			Comments:  filteredComments,
+			Reviews:   filteredReviews,
+			Analytics: analytics,
+		},
+	}
+}
+
+func (s *Storage) ReadWorkspace(token string) (*models.WorkspaceSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadState(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	profile := s.profileFor(nil, state, token)
+	snap := buildSnapshot(state, profile)
+	return &snap, nil
+}
+
+func (s *Storage) GetPublishedGuide(id string) (*models.Instruction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadState(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, g := range state.Guides {
+		if g.ID == id && g.Status == models.StatusPublished {
+			cp := g
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
+
+func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.CommandResult, nextToken *string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	defer func() {
+		if r := recover(); r != nil {
+			if wErr, ok := r.(*WorkspaceError); ok {
+				err = wErr
+			} else {
+				err = fmt.Errorf("%v", r)
+			}
+		}
+	}()
+
+	var command map[string]any
+	if err := json.Unmarshal(input, &command); err != nil {
+		return nil, nil, NewWorkspaceError("Некорректный JSON.", 400)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	state, err := s.loadState(tx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	current := s.profileFor(tx, state, token)
+	profile := current
+	var outNextToken *string
+	var outID string
+	var outCount *int
+
+	cmdType, _ := command["type"].(string)
+
+	switch cmdType {
+	case "register", "login":
+		registering := cmdType == "register"
+		var email string
+		var role string
+		var name string
+
+		if registering {
+			rawProfile, ok := command["profile"].(map[string]any)
+			requireCondition(ok, "Некорректные данные.")
+			email = textValidation(rawProfile["email"], 254, true)
+			role = textValidation(rawProfile["role"], 40, true)
+			name = textValidation(rawProfile["name"], 100, false)
+			if name == "" {
+				name = "Участник"
+			}
+		} else {
+			email = textValidation(command["email"], 254, true)
+			role = "Ученик"
+			name = "Участник"
+		}
+
+		roleValid := false
+		for _, r := range roles {
+			if r == role {
+				roleValid = true
+				break
+			}
+		}
+		requireCondition(roleValid, "Выбери доступную роль.")
+
+		existing := findAccount(state, email)
+		requireCondition(!registering || existing == nil, "Такой профиль уже есть. Нажми «Вход».", 409)
+
+		if existing != nil {
+			profile = existing
+		} else {
+			profile = &models.Profile{
+				ID:    RandomUUID(),
+				Email: email,
+				Role:  role,
+				Name:  name,
+			}
+		}
+
+		state.Accounts[models.ActorID(*profile)] = *profile
+		now := time.Now().UnixMilli()
+
+		_, _ = tx.Exec("DELETE FROM sessions WHERE expires <= ?", now)
+
+		tok := RandomToken()
+		outNextToken = &tok
+		expires := now + SessionLifetime*1000
+
+		if _, err := tx.Exec("INSERT INTO sessions VALUES (?, ?, ?)", Digest(tok), models.ActorID(*profile), expires); err != nil {
+			return nil, nil, err
+		}
+
+		if token != "" {
+			_, _ = tx.Exec("DELETE FROM sessions WHERE token = ?", Digest(token))
+		}
+
+	case "logout":
+		if token != "" {
+			_, _ = tx.Exec("DELETE FROM sessions WHERE token = ?", Digest(token))
+		}
+		profile = nil
+		emptyStr := ""
+		outNextToken = &emptyStr
+
+	default:
+		requireCondition(current != nil, "Войди в аккаунт, чтобы продолжить.", 401)
+		actor := models.ActorID(*current)
+
+		if cmdType == "profile" {
+			edits, ok := command["edits"].(map[string]any)
+			requireCondition(ok, "Некорректные данные.")
+			email := textValidation(edits["email"], 254, true)
+			existing := findAccount(state, email)
+			requireCondition(existing == nil || models.ActorID(*existing) == actor, "Этот email уже используется.", 409)
+
+			var avatar string
+			if avVal, exists := edits["avatar"]; exists && avVal != nil {
+				avatar = textValidation(avVal, 450000, false)
+				requireCondition(avatar == "" || avatarRegex.MatchString(avatar), "Не удалось сохранить это фото.")
+			}
+
+			var bio string
+			if bioVal, exists := edits["bio"]; exists && bioVal != nil {
+				bio = textValidation(bioVal, 400, false)
+			}
+			name := textValidation(edits["name"], 100, true)
+
+			updated := *current
+			updated.Email = email
+			updated.Name = name
+			updated.Bio = bio
+			updated.Avatar = avatar
+			profile = &updated
+			state.Accounts[actor] = updated
+			break
+		}
+
+		if cmdType == "save" {
+			rawGuide, ok := command["guide"].(map[string]any)
+			requireCondition(ok, "Некорректные данные.")
+			requested := validateGuideID(rawGuide["id"])
+
+			prevIndex := -1
+			for i, g := range state.Guides {
+				if g.ID == requested {
+					prevIndex = i
+					break
+				}
+			}
+
+			var previous *models.Instruction
+			if prevIndex != -1 {
+				previous = &state.Guides[prevIndex]
+				requireCondition(models.IsOwner(*previous, current), "Редактировать может только автор.", 403)
+			}
+
+			id := requested
+			if previous == nil {
+				id = RandomUUID()
+			}
+
+			submit, _ := command["submit"].(bool)
+			guide := parseGuide(rawGuide, current, previous, submit, id)
+
+			if previous != nil {
+				state.Guides[prevIndex] = guide
+			} else {
+				state.Guides = append([]models.Instruction{guide}, state.Guides...)
+			}
+
+			var newReviews []models.ExpertReview
+			for _, rev := range state.Reviews {
+				if rev.GuideID != id {
+					newReviews = append(newReviews, rev)
+				}
+			}
+			state.Reviews = newReviews
+			outID = id
+			break
+		}
+
+		if cmdType == "import" {
+			guidesRaw, ok := command["guides"].([]any)
+			requireCondition(ok && len(guidesRaw) <= 30, "Можно перенести до 30 черновиков за раз.")
+
+			if state.Imports[actor] == nil {
+				state.Imports[actor] = make(map[string]string)
+			}
+			imported := state.Imports[actor]
+
+			cnt := 0
+			for _, incoming := range guidesRaw {
+				incomingMap, ok := incoming.(map[string]any)
+				requireCondition(ok, "Некорректные данные.")
+				sourceID := validateGuideID(incomingMap["id"])
+
+				if _, exists := imported[sourceID]; exists {
+					continue
+				}
+
+				newID := RandomUUID()
+				g := parseGuide(incomingMap, current, nil, false, newID)
+				state.Guides = append([]models.Instruction{g}, state.Guides...)
+				imported[sourceID] = newID
+				cnt++
+			}
+			outCount = &cnt
+			break
+		}
+
+		key := validateGuideID(command["guideId"])
+		var guide *models.Instruction
+		var guideIndex int = -1
+		for i, g := range state.Guides {
+			if g.ID == key {
+				guide = &state.Guides[i]
+				guideIndex = i
+				break
+			}
+		}
+
+		requireCondition(guide != nil && models.CanView(*guide, current), "Инструкция недоступна.", 404)
+
+		if cmdType == "moderate" {
+			requireCondition(models.IsAdmin(current), "Решение принимает администратор.", 403)
+			requireCondition(guide.Status == models.StatusPending, "Решение уже принято или инструкция отозвана.", 409)
+
+			decision, _ := command["decision"].(string)
+			requireCondition(decision == "approve" || decision == "reject", "Выбери решение.")
+
+			note := textValidation(command["note"], 2000, decision == "reject")
+			guide.ModerationNote = note
+			if decision == "approve" {
+				guide.Status = models.StatusPublished
+			} else {
+				guide.Status = models.StatusRejected
+			}
+			guide.ReviewedAt = time.Now().UTC().Format(time.RFC3339)
+			guide.ReviewedBy = current.Name
+			state.Guides[guideIndex] = *guide
+			break
+		}
+
+		requireCondition(guide.Status == models.StatusPublished, "Действие доступно после публикации.", 403)
+
+		if cmdType == "fork" {
+			outID = RandomUUID()
+			title := guide.Title
+			if len([]rune(title)) > 230 {
+				title = string([]rune(title)[:230])
+			}
+			title = title + " — моя версия"
+
+			forkedSteps := make([]models.Step, len(guide.Steps))
+			for i, s := range guide.Steps {
+				forkedSteps[i] = s
+				forkedSteps[i].ID = RandomUUID()
+			}
+
+			forkedGuide := models.Instruction{
+				ID:          outID,
+				Title:       title,
+				Description: guide.Description,
+				Category:    guide.Category,
+				Minutes:     guide.Minutes,
+				Author:      current.Name,
+				OwnerID:     actor,
+				Owned:       true,
+				Status:      models.StatusDraft,
+				Source: &models.SourceRef{
+					ID:     guide.ID,
+					Title:  guide.Title,
+					Author: guide.Author,
+				},
+				Steps: forkedSteps,
+			}
+
+			state.Guides = append([]models.Instruction{forkedGuide}, state.Guides...)
+			break
+		}
+
+		if cmdType == "vote" {
+			val, _ := command["value"].(string)
+			requireCondition(val == string(models.VoteHelpful) || val == string(models.VoteUnhelpful), "Неизвестная оценка.")
+			if state.Votes[key] == nil {
+				state.Votes[key] = make(map[string]models.Vote)
+			}
+			if state.Votes[key][actor] == models.Vote(val) {
+				delete(state.Votes[key], actor)
+			} else {
+				state.Votes[key][actor] = models.Vote(val)
+			}
+			break
+		}
+
+		if cmdType == "review" {
+			requireCondition(models.IsExpert(current) && !models.IsOwner(*guide, current), "Рецензию может оставить эксперт на чужую инструкцию.", 403)
+			verified, ok := command["verified"].(bool)
+			requireCondition(ok, "Выбери результат проверки.")
+			text := textValidation(command["text"], 2000, true)
+
+			review := models.ExpertReview{
+				GuideID:    key,
+				ExpertID:   actor,
+				ExpertName: current.Name,
+				Verified:   verified,
+				Text:       text,
+				CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+			}
+
+			var newReviews []models.ExpertReview
+			for _, rev := range state.Reviews {
+				if rev.GuideID != key || rev.ExpertID != actor {
+					newReviews = append(newReviews, rev)
+				}
+			}
+			state.Reviews = append([]models.ExpertReview{review}, newReviews...)
+			break
+		}
+
+		stepIDVal, _ := command["stepId"].(string)
+		stepIndex := -1
+		for i, s := range guide.Steps {
+			if s.ID == stepIDVal {
+				stepIndex = i
+				break
+			}
+		}
+		requireCondition(stepIndex != -1, "Шаг не найден.", 404)
+		step := guide.Steps[stepIndex]
+
+		if cmdType == "comment" || cmdType == "help" {
+			maxLen := 2000
+			if cmdType == "help" {
+				maxLen = 1500
+			}
+			content := textValidation(command["text"], maxLen, true)
+			entryID := RandomUUID()
+
+			if cmdType == "comment" {
+				state.Comments = append(state.Comments, models.StepComment{
+					ID:         entryID,
+					GuideID:    key,
+					StepID:     step.ID,
+					Text:       content,
+					AuthorID:   actor,
+					AuthorName: current.Name,
+					CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+				})
+			} else {
+				state.Reports = append(state.Reports, models.Report{
+					ID:       entryID,
+					GuideID:  key,
+					StepID:   step.ID,
+					Text:     content,
+					AuthorID: actor,
+				})
+			}
+			break
+		}
+
+		requireCondition(cmdType == "visit" || cmdType == "check" || cmdType == "complete", "Неизвестное действие.")
+
+		if state.Runs[key] == nil {
+			state.Runs[key] = make(map[string]models.Run)
+		}
+		run, hasRun := state.Runs[key][actor]
+		if !hasRun {
+			run = models.DefaultRun()
+		}
+
+		run.Current = stepIndex
+
+		hasVisited := false
+		for _, v := range run.Visited {
+			if v == step.ID {
+				hasVisited = true
+				break
+			}
+		}
+		if !hasVisited {
+			run.Visited = append(run.Visited, step.ID)
+		}
+		run.LastStepID = step.ID
+		run.UpdatedAt = time.Now().UnixMilli()
+
+		if cmdType == "check" {
+			checkIdxFloat, ok := command["index"].(float64)
+			checkIdx := int(checkIdxFloat)
+			requireCondition(ok && float64(checkIdx) == checkIdxFloat && checkIdx >= 0 && checkIdx < len(step.Checks), "Пункт чек-листа не найден.")
+			checked, ok := command["checked"].(bool)
+			requireCondition(ok, "Пункт чек-листа не найден.")
+
+			if run.Checked == nil {
+				run.Checked = make(map[string][]bool)
+			}
+			ticks := run.Checked[step.ID]
+			for len(ticks) < len(step.Checks) {
+				ticks = append(ticks, false)
+			}
+			ticks[checkIdx] = checked
+			run.Checked[step.ID] = ticks
+
+			if !checked {
+				var newCompleted []string
+				for _, c := range run.Completed {
+					if c != step.ID {
+						newCompleted = append(newCompleted, c)
+					}
+				}
+				run.Completed = newCompleted
+			}
+		}
+
+		if cmdType == "complete" {
+			ticks := run.Checked[step.ID]
+			allChecked := len(ticks) == len(step.Checks) && len(step.Checks) > 0
+			for _, t := range ticks {
+				if !t {
+					allChecked = false
+					break
+				}
+			}
+			requireCondition(allChecked, "Отметь все пункты этого шага.")
+
+			hasCompleted := false
+			for _, c := range run.Completed {
+				if c == step.ID {
+					hasCompleted = true
+					break
+				}
+			}
+			if !hasCompleted {
+				run.Completed = append(run.Completed, step.ID)
+			}
+
+			remaining := -1
+			for i, s := range guide.Steps {
+				isComp := false
+				for _, c := range run.Completed {
+					if c == s.ID {
+						isComp = true
+						break
+					}
+				}
+				if !isComp {
+					remaining = i
+					break
+				}
+			}
+
+			if remaining != -1 {
+				if stepIndex+1 < len(guide.Steps) {
+					run.Current = stepIndex + 1
+				} else {
+					run.Current = remaining
+				}
+				nextStep := guide.Steps[run.Current]
+				run.LastStepID = nextStep.ID
+
+				nextVisited := false
+				for _, v := range run.Visited {
+					if v == nextStep.ID {
+						nextVisited = true
+						break
+					}
+				}
+				if !nextVisited {
+					run.Visited = append(run.Visited, nextStep.ID)
+				}
+			}
+		}
+
+		state.Runs[key][actor] = run
+	}
+
+	snap := buildSnapshot(state, profile)
+	result = &models.CommandResult{
+		Profile: snap.Profile,
+		Data:    snap.Data,
+		ID:      outID,
+		Count:   outCount,
+	}
+
+	updatedBytes, err := json.Marshal(state)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if _, err := tx.Exec("UPDATE workspace SET payload = ? WHERE id = 1", string(updatedBytes)); err != nil {
+		return nil, nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+
+	return result, outNextToken, nil
+}
