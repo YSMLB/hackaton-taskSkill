@@ -37,6 +37,7 @@ func main() {
 	mux.HandleFunc("POST /api/workspace", srv.HandleWorkspacePost)
 	mux.HandleFunc("GET /api/search", srv.HandleSearchGet)
 	mux.HandleFunc("POST /api/search", srv.HandleSearchPost)
+	mux.HandleFunc("POST /api/ai/generate-guide", srv.HandleGenerateGuide)
 	mux.HandleFunc("GET /api/guides/{id}", srv.HandleGuideGet)
 	mux.HandleFunc("GET /api/health", srv.HandleHealth)
 	mux.HandleFunc("GET /health", srv.HandleHealth)

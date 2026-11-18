@@ -109,4 +109,51 @@ func TestHandlersFlow(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 on guide get, got %d", w.Code)
 	}
+
+	// 7. Test AI Generate without session (should return 401)
+	genReq := httptest.NewRequest(http.MethodPost, "/api/ai/generate-guide", bytes.NewReader([]byte(`{"prompt":"Deploy Docker"}`)))
+	genReq.Header.Set("Content-Type", "application/json")
+	genReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	w = httptest.NewRecorder()
+	srv.HandleGenerateGuide(w, genReq)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 unauthorized without cookie, got %d", w.Code)
+	}
+
+	// 8. Test AI Generate with Learner role (should return 403)
+	genReq = httptest.NewRequest(http.MethodPost, "/api/ai/generate-guide", bytes.NewReader([]byte(`{"prompt":"Deploy Docker"}`)))
+	genReq.Header.Set("Content-Type", "application/json")
+	genReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	genReq.AddCookie(sessionCookie)
+	w = httptest.NewRecorder()
+	srv.HandleGenerateGuide(w, genReq)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 forbidden for learner, got %d", w.Code)
+	}
+
+	// 9. Register Author & test AI Generate when unconfigured (should return 503)
+	authorReg, _ := json.Marshal(map[string]any{
+		"type": "register",
+		"profile": map[string]any{
+			"email": "author_gen@test.ru",
+			"name":  "Автор Гена",
+			"role":  "Автор",
+		},
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/workspace", bytes.NewReader(authorReg))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	w = httptest.NewRecorder()
+	srv.HandleWorkspacePost(w, req)
+	authorCookie := w.Result().Cookies()[0]
+
+	genReq = httptest.NewRequest(http.MethodPost, "/api/ai/generate-guide", bytes.NewReader([]byte(`{"prompt":"Deploy Docker"}`)))
+	genReq.Header.Set("Content-Type", "application/json")
+	genReq.Header.Set("Sec-Fetch-Site", "same-origin")
+	genReq.AddCookie(authorCookie)
+	w = httptest.NewRecorder()
+	srv.HandleGenerateGuide(w, genReq)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when AI unconfigured, got %d: %s", w.Code, w.Body.String())
+	}
 }

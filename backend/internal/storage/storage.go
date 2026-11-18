@@ -536,6 +536,17 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 	}
 }
 
+func (s *Storage) GetProfile(token string) (*models.Profile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadState(nil)
+	if err != nil {
+		return nil, err
+	}
+	return s.profileFor(nil, state, token), nil
+}
+
 func (s *Storage) ReadWorkspace(token string) (*models.WorkspaceSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
