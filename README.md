@@ -31,12 +31,16 @@ npm run dev -- --port 3050
 
 ## Умный поиск
 
-Поиск по содержимому и синонимам работает сразу. Для режима «Найти с ИИ» скопируйте `.env.example` в `.env.local`, укажите `AI_BASE_URL`, `AI_MODEL` и `AI_API_KEY`, затем перезапустите сервер. Поддерживается OpenAI-совместимый Chat Completions API. Храните ключ в серверной переменной окружения.
+Поиск по содержимому и синонимам работает сразу. Для режима «Найти с ИИ» скопируйте `frontend/.env.example` в `frontend/.env.local`, укажите `AI_BASE_URL`, `AI_MODEL` и `AI_API_KEY`, затем перезапустите сервер. Поддерживается OpenAI-совместимый Chat Completions API. Храните ключ в серверной переменной окружения.
 
-## Где лежит код
+## Структура проекта
 
-- `src/app` и `src/components/redesign` — страницы и интерфейс.
-- `src/app/api/workspace` и `src/lib/server/workspace.ts` — API, сеансы, роли и SQLite.
-- `src/lib/guide-pdf.ts` — создание PDF со встроенным шрифтом.
-- `src/app/offline`, `src/lib/offline-guides.ts`, `public/sw.js` — офлайн-библиотека.
-- `src/app/embed` и `src/data/editor-templates.ts` — встраивание и шаблоны.
+- `frontend/src/app` и `frontend/src/components` — страницы и компоненты интерфейса.
+- `frontend/public` — изображения, иконки и Service Worker.
+- `frontend/src/lib` — экспорт PDF, офлайн-хранение и функции интерфейса.
+- `backend/routes` — обработчики API.
+- `backend/workspace.ts` — SQLite, сеансы, роли и бизнес-логика.
+- `backend/data` — начальные инструкции для базы.
+- `shared` — общие типы, данные примеров и поиск по словам.
+
+Next.js подключает обработчики из `backend` через два файла в `frontend/src/app/api`. Встраиваемая страница получает опубликованные инструкции из `backend`. Всё приложение запускается одной командой из корня. `package.json`, lock-файл, Dockerfile и Compose находятся в корне.
