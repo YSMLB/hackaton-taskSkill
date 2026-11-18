@@ -1,0 +1,4 @@
+.modes { display: flex; gap: 4px; padding: 4px; margin: 0 0 24px; border: 1px solid #d4d5d3; border-radius: 10px; background: #e7e7e7; }
+.modes button { flex: 1; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 7px; background: transparent; color: #62676b; font: inherit; font-size: 13px; font-weight: 600; }
+.modes button[aria-pressed="true"] { background: #f8f8f6; color: #23262c; box-shadow: 0 1px 3px #23262c12; }
+.modes button:focus-visible { outline: 2px solid #cf2b24; outline-offset: 2px; }

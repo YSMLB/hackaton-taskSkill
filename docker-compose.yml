@@ -1,0 +1,22 @@
+services:
+  stepflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stepflow-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      - workspace-data:/app/.stepflow
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  workspace-data:

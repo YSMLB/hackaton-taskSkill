@@ -1,0 +1,38 @@
+.appHeader { position: sticky; top: 0; z-index: 30; background: #23262c; color: #f8f8f6; border-bottom: 1px solid #ffffff12; }
+.appHeaderInner { display: flex; align-items: center; gap: 30px; width: min(1440px, 100%); min-height: 84px; margin: auto; padding: 16px 40px; }
+.appHeader :global(.brand) { color: #f8f8f6; font-size: 24px; }
+.appHeader :global(.brand-mark) { background: #ffffff0d; }
+.appNav { display: flex; align-items: center; gap: 5px; margin-left: 8px; }
+.appNav a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 12px; border-radius: 8px; color: #c4c7cb; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap; }
+.appNav a:hover { color: #fff; background: #ffffff0a; }
+.appNav a[aria-current="page"] { background: #82ad861c; color: #b7d2ba; }
+.appActions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.createButton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 11px 15px; border-radius: 9px; background: #cf2b24; color: #fff; font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap; }
+.createButton:hover { background: #b9251f; }
+.profileButton, .appMenuButton { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid #ffffff22; border-radius: 10px; color: #e7e7e7; background: transparent; }
+.profileButton { border-color: #82ad8660; color: #b7d2ba; }
+.profileButton[aria-current="page"] { background: #82ad8626; border-color: #82ad86; }
+.profileButton:hover, .appMenuButton:hover { background: #ffffff0d; }
+.appMenuButton { display: none; }
+.appHeader a:focus-visible, .appHeader button:focus-visible { outline: 3px solid #b7d2ba; outline-offset: 4px; }
+.workspaceContent { max-width: 1440px; min-height: calc(100dvh - 84px); margin-inline: auto; padding: 42px 40px 64px; }
+@media (max-width: 1180px) {
+  .appHeaderInner { flex-wrap: wrap; gap: 0 24px; padding: 14px 32px; min-height: 76px; }
+  .appMenuButton { display: inline-grid; }
+  .appNav { display: none; order: 3; width: 100%; margin: 14px 0 0; padding-top: 14px; border-top: 1px solid #ffffff1a; }
+  .appNavOpen { display: flex; }
+  .appNav a { flex: 1; }
+  .workspaceContent { padding-inline: 32px; }
+}
+@media (max-width: 700px) {
+  .landingLogin { display: none; }
+  .appHeaderInner { padding: 12px 20px; min-height: 72px; gap: 0 12px; }
+  .appHeader :global(.brand) { font-size: 23px; }
+  .appActions { gap: 7px; }
+  .createButton { width: 40px; height: 40px; padding: 0; }
+  .createButton span { display: none; }
+  .profileButton, .appMenuButton { width: 40px; height: 40px; border-radius: 9px; }
+  .appNavOpen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .appNav a { justify-content: flex-start; padding: 12px 10px; font-size: 11px; white-space: normal; }
+  .workspaceContent { padding: 28px 20px 40px; min-height: calc(100dvh - 72px); }
+}

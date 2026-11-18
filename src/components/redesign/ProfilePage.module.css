@@ -1,0 +1,29 @@
+.page { max-width: 1080px; margin-inline: auto; }
+.page h1 { margin-bottom: 26px; font-size: clamp(28px, 4vw, 40px); }
+.layout { display: grid; grid-template-columns: minmax(0, 290px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.summary, .panel { min-width: 0; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--white); }
+.summary h2 { margin: 16px 0 6px; font-size: 21px; overflow-wrap: anywhere; }
+.summary p { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.role { display: inline-block; margin-top: 12px; padding: 4px 10px; border-radius: 6px; color: #355b3a; background: #e4eee4; font-size: 12px; font-weight: 700; }
+.avatar { display: inline-grid; place-items: center; flex: none; overflow: hidden; border-radius: 50%; background: #e4eee4; color: #355b3a; font-weight: 700; line-height: 1; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.links { display: grid; gap: 3px; margin: 20px 0 10px; padding: 15px 0 10px; border-block: 1px solid var(--line); }
+.links a, .logout { display: flex; align-items: center; gap: 10px; min-height: 44px; border-radius: 8px; padding: 8px; font-size: 13px; font-weight: 600; }
+.links a:hover { background: #23262c08; }
+.logout { border: 0; color: #a9231c; text-align: left; }
+.logout:hover { background: #f9e9e7; }
+.panel h2 { margin-bottom: 22px; font-size: 23px; }
+.photoRow { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 26px; }
+.photoActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.upload { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.upload input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+.upload:hover { background: #23262c08; }
+.upload:focus-within { outline: 2px solid var(--graphite); outline-offset: 3px; }
+.photoHint { margin-top: 5px; color: var(--muted); font-size: 12px; }
+.error { color: #a9231c; font-size: 13px; }
+.saveRow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 22px; }
+.status { color: #355b3a; font-size: 13px; font-weight: 600; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .summary, .panel { padding: 20px; }
+}
