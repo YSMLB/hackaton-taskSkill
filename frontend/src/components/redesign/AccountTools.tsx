@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { actorId, isAdmin } from '@shared/community';
+import { actorId } from '@shared/community';
 import { Check, ChevronRight } from 'lucide-react';
 import { businessPrice, plans } from '@/data/subscription-plans';
 import { RegistrationGate, WorkShell } from './Chrome';
@@ -41,7 +41,6 @@ function Subscriptions() {
       <p>{data.teams.length ? 'Управляй участниками и инструкциями в своей команде.' : 'Создай команду и добавь участников по email.'}</p>
       <Link className="button button-outline" href="/team">Перейти в команды <ChevronRight size={17} aria-hidden="true" /></Link>
     </div>}
-    {isAdmin(profile) && <ExpertForm />}
   </section>;
 }
 
@@ -74,21 +73,5 @@ function Teams() {
         <Link className="button button-outline" href="/subscriptions">Посмотреть подписки <ChevronRight size={17} aria-hidden="true" /></Link>
       </div>}
     </section>
-  </section>;
-}
-
-function ExpertForm() {
-  const { send, pending, notify } = useStore();
-  const [email, setEmail] = useState('');
-  async function change(enabled: boolean) {
-    if (await send({ type: 'expert', email, enabled })) notify(enabled ? 'Эксперт назначен' : 'Роль эксперта отозвана');
-  }
-  return <section className="reports-panel expert-panel"><h2>Назначение экспертов</h2>
-    <p className="muted">Укажи email зарегистрированного пользователя с подпиской, чтобы выдать или отозвать роль эксперта.</p>
-    <div className="field"><label htmlFor="expert-email">Email пользователя</label><input id="expert-email" value={email} onChange={event => setEmail(event.target.value)} /></div>
-    <div className="utility-actions">
-      <button type="button" className="button button-dark" disabled={pending || !email.trim()} onClick={() => void change(true)}>Назначить экспертом</button>
-      <button type="button" className="button button-outline" disabled={pending || !email.trim()} onClick={() => void change(false)}>Отозвать роль</button>
-    </div>
   </section>;
 }

@@ -7,12 +7,12 @@ import { useStore } from './store';
 
 export function Moderation() {
   const { data, profile } = useStore();
-  const [filter, setFilter] = useState('pending');
+  const [filter, setFilter] = useState<'pending' | 'history' | 'experts'>('pending');
   if (!isAdmin(profile)) return <div className="empty-state"><ShieldCheck size={32} /><h1>Проверка доступна администратору</h1><p>Для демонстрации выйди из профиля и выбери роль «Администратор (демо)» при регистрации.</p><Link href="/author" className="button button-dark">Мои инструкции</Link></div>;
   const guides = data.guides.filter(g => filter === 'pending' ? g.status === 'pending' : Boolean(g.reviewedAt)).sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
   return <><div className="page-heading"><div><span className="section-label">Модерация</span><h1>Проверка инструкций</h1><p>Одобри материал для каталога или верни автору с конкретным замечанием.</p></div><span className="pill">В очереди: {data.guides.filter(g => g.status === 'pending').length}</span></div>
-    <div className="category-filters moderation-filters"><button className={filter === 'pending' ? 'active' : ''} onClick={() => setFilter('pending')}>На проверке</button><button className={filter === 'history' ? 'active' : ''} onClick={() => setFilter('history')}>Решения</button></div>
-    {guides.length ? <div className="moderation-list">{guides.map(g => <ReviewCard key={`${g.id}-${g.status}-${g.submittedAt}`} guide={g} />)}</div> : <div className="empty-state"><ShieldCheck size={32} /><h2>{filter === 'pending' ? 'Очередь пуста' : 'Пока нет решений'}</h2><p>После отправки автором инструкция появится здесь.</p></div>}
+    <div className="category-filters moderation-filters"><button className={filter === 'pending' ? 'active' : ''} aria-pressed={filter === 'pending'} onClick={() => setFilter('pending')}>На проверке</button><button className={filter === 'history' ? 'active' : ''} aria-pressed={filter === 'history'} onClick={() => setFilter('history')}>Решения</button><button className={filter === 'experts' ? 'active' : ''} aria-pressed={filter === 'experts'} onClick={() => setFilter('experts')}>Эксперты</button></div>
+    {filter === 'experts' ? <ExpertForm /> : guides.length ? <div className="moderation-list">{guides.map(g => <ReviewCard key={`${g.id}-${g.status}-${g.submittedAt}`} guide={g} />)}</div> : <div className="empty-state"><ShieldCheck size={32} /><h2>{filter === 'pending' ? 'Очередь пуста' : 'Пока нет решений'}</h2><p>После отправки автором инструкция появится здесь.</p></div>}
     <p className="workspace-disclaimer">На стенде роль администратора можно выбрать при регистрации.</p></>;
 }
 
@@ -30,4 +30,20 @@ function ReviewCard({ guide }: { guide: Instruction }) {
     <details className="review-content"><summary>Содержание: {guide.steps.length} шагов</summary>{guide.steps.map((s, i) => <section key={s.id}><h3>{i + 1}. {s.title}</h3><p>{s.text}</p>{s.code && <pre><code>{s.code}</code></pre>}<ul>{s.checks.map((c, index) => <li key={index}>{c}</li>)}</ul></section>)}</details>
     {guide.status === 'pending' ? <><div className="field"><label htmlFor={`review-${guide.id}`}>Замечание автору</label><textarea id={`review-${guide.id}`} rows={3} maxLength={2000} value={note} onChange={e => { setNote(e.target.value); setError(''); }} placeholder="Что нужно исправить? Обязательно при возврате." /></div>{error && <p className="field-error" role="alert">{error}</p>}<div className="review-actions"><button className="button button-outline" disabled={pending} onClick={() => { if (!note.trim()) { setError('Напиши причину возврата, чтобы автор понял, что изменить.'); return; } void review('reject'); }}><MessageSquare size={17} />Вернуть на доработку</button><button className="button button-dark" disabled={pending} onClick={() => void review('approve')}><Check size={17} />Одобрить и опубликовать</button></div></> : <div className="review-decision"><p>{guide.moderationNote || 'Одобрено без замечаний.'}</p><span className="small-note">Решение: {guide.reviewedBy || 'Администратор'}</span></div>}
   </article>;
+}
+
+function ExpertForm() {
+  const { send, pending, notify } = useStore();
+  const [email, setEmail] = useState('');
+  async function change(enabled: boolean) {
+    if (await send({ type: 'expert', email, enabled })) notify(enabled ? 'Эксперт назначен' : 'Роль эксперта отозвана');
+  }
+  return <section className="account-tools reports-panel expert-panel"><h2>Назначение экспертов</h2>
+    <p className="muted">Укажи email зарегистрированного пользователя с подпиской, чтобы выдать или отозвать роль эксперта.</p>
+    <div className="field"><label htmlFor="expert-email">Email пользователя</label><input id="expert-email" value={email} onChange={event => setEmail(event.target.value)} /></div>
+    <div className="utility-actions">
+      <button type="button" className="button button-dark" disabled={pending || !email.trim()} onClick={() => void change(true)}>Назначить экспертом</button>
+      <button type="button" className="button button-outline" disabled={pending || !email.trim()} onClick={() => void change(false)}>Отозвать роль</button>
+    </div>
+  </section>;
 }
