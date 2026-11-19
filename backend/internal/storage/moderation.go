@@ -34,9 +34,16 @@ func saveState(tx *sql.Tx, state *models.State) error {
 }
 
 type ModerationJob struct {
-	Guide    models.Instruction
-	epoch    int
-	failures int
+	Guide   models.Instruction
+	epoch   int
+	attempt models.AutoReviewAttempt
+}
+
+// Recheck earlier model referrals once when the editorial rules change.
+const moderationPolicy = 1
+
+func previousPolicyReferral(attempt models.AutoReviewAttempt) bool {
+	return attempt.ManualNote != "" && attempt.Failures < 3 && attempt.Policy < moderationPolicy
 }
 
 func (s *Storage) ModerationWake() <-chan struct{} { return s.moderationWake }
@@ -53,8 +60,9 @@ func (s *Storage) NextModerationJob() (*ModerationJob, error) {
 	for i := len(state.Guides) - 1; i >= 0; i-- {
 		guide := state.Guides[i]
 		attempt := state.AutoReviews[guide.ID]
-		if guide.Status == models.StatusPending && guide.TeamID == "" && attempt.ManualNote == "" && attempt.RetryAt <= now {
-			return &ModerationJob{Guide: guide, epoch: state.ModerationEpoch, failures: attempt.Failures}, nil
+		eligible := previousPolicyReferral(attempt) || (attempt.ManualNote == "" && attempt.RetryAt <= now)
+		if guide.Status == models.StatusPending && guide.TeamID == "" && eligible {
+			return &ModerationJob{Guide: guide, epoch: state.ModerationEpoch, attempt: attempt}, nil
 		}
 	}
 	return nil, nil
@@ -82,8 +90,11 @@ func (s *Storage) RecordModeration(job ModerationJob, decision, note string) err
 			continue
 		}
 		attempt := state.AutoReviews[guide.ID]
-		if guide.Status != models.StatusPending || guide.TeamID != "" || guide.Revision != job.Guide.Revision || attempt.ManualNote != "" || attempt.Failures != job.failures {
+		if guide.Status != models.StatusPending || guide.TeamID != "" || guide.Revision != job.Guide.Revision || attempt != job.attempt {
 			return nil
+		}
+		if previousPolicyReferral(attempt) {
+			attempt = models.AutoReviewAttempt{}
 		}
 		switch decision {
 		case "approve", "reject":
@@ -91,6 +102,7 @@ func (s *Storage) RecordModeration(job ModerationJob, decision, note string) err
 		case "manual", "retry":
 			if decision == "manual" {
 				attempt.ManualNote = note
+				attempt.Policy = moderationPolicy
 			} else {
 				attempt.Failures++
 				switch attempt.Failures {

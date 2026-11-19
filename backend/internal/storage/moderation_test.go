@@ -127,6 +127,28 @@ func TestAutomaticModerationUsesCurrentSubmittedVersion(t *testing.T) {
 	if snapshot.Data.AutoModeration == nil || !*snapshot.Data.AutoModeration || snapshot.Data.Moderation.ManualReviewNotes[current.Guide.ID] == "" || job() != nil {
 		t.Fatal("lost review state on restart")
 	}
+
+	tx, err := db.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	state, err := db.loadState(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.AutoReviews[current.Guide.ID] = models.AutoReviewAttempt{ManualNote: "Решение по старым правилам."}
+	if err := saveState(tx, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	record(requireQueued(), "manual", "Требуется решение администратора.")
+	if job() != nil {
+		t.Fatal("previous referral should be rechecked only once")
+	}
+
 	submit()
 	current = requireQueued()
 	record(current, "retry", "")

@@ -159,6 +159,7 @@ type AutoReviewAttempt struct {
 	Failures   int    `json:"failures,omitempty"`
 	RetryAt    int64  `json:"retryAt,omitempty"`
 	ManualNote string `json:"manualNote,omitempty"`
+	Policy     int    `json:"policy,omitempty"`
 }
 
 type State struct {

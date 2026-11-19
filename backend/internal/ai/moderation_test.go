@@ -19,6 +19,12 @@ func TestReviewGuideProviderContract(t *testing.T) {
 		if r.URL.Path != "/v1/chat/completions" || r.Header.Get("Authorization") != "Bearer test" {
 			t.Error("unexpected provider request")
 		}
+		var request struct {
+			ResponseFormat map[string]string `json:"response_format"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.ResponseFormat["type"] != "json_object" {
+			t.Errorf("expected structured moderation response, got %v (%v)", request.ResponseFormat, err)
+		}
 		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": result}}}})
 	}))
 	defer provider.Close()
