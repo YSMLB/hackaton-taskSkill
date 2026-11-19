@@ -26,6 +26,14 @@ type chatMessage struct {
 }
 
 func chatCompletion(ctx context.Context, system string, user any, temperature float64, timeout time.Duration) (string, error) {
+	return chatCompletionWithFormat(ctx, system, user, temperature, timeout, "")
+}
+
+func chatCompletionJSON(ctx context.Context, system string, user any, temperature float64, timeout time.Duration) (string, error) {
+	return chatCompletionWithFormat(ctx, system, user, temperature, timeout, "json_object")
+}
+
+func chatCompletionWithFormat(ctx context.Context, system string, user any, temperature float64, timeout time.Duration, format string) (string, error) {
 	if !IsConfigured() {
 		return "", errors.New("ИИ-сервис не настроен")
 	}
@@ -39,14 +47,23 @@ func chatCompletion(ctx context.Context, system string, user any, temperature fl
 		return "", errors.New("небезопасный AI_BASE_URL запрещен")
 	}
 
-	body, err := json.Marshal(struct {
-		Model       string        `json:"model"`
-		Messages    []chatMessage `json:"messages"`
-		Temperature float64       `json:"temperature"`
-	}{
-		Model: os.Getenv("AI_MODEL"), Temperature: temperature,
-		Messages: []chatMessage{{Role: "system", Content: system}, {Role: "user", Content: user}},
-	})
+	type reqPayload struct {
+		Model          string            `json:"model"`
+		Messages       []chatMessage     `json:"messages"`
+		Temperature    float64           `json:"temperature"`
+		ResponseFormat map[string]string `json:"response_format,omitempty"`
+	}
+
+	payload := reqPayload{
+		Model:       os.Getenv("AI_MODEL"),
+		Temperature: temperature,
+		Messages:    []chatMessage{{Role: "system", Content: system}, {Role: "user", Content: user}},
+	}
+	if format != "" {
+		payload.ResponseFormat = map[string]string{"type": format}
+	}
+
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}

@@ -34,6 +34,11 @@ func CleanCodeFence(s string) string {
 	if strings.HasSuffix(s, "```") {
 		s = strings.TrimSpace(strings.TrimSuffix(s, "```"))
 	}
+	firstBrace := strings.Index(s, "{")
+	lastBrace := strings.LastIndex(s, "}")
+	if firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace {
+		return s[firstBrace : lastBrace+1]
+	}
 	return s
 }
 
@@ -75,17 +80,26 @@ func GenerateGuideVariants(ctx context.Context, prompt string, category string, 
 
 	userContent := fmt.Sprintf("Тема: %s\nКатегория: %s\nПримерное время: %d минут", prompt, category, minutes)
 
-	content, err := chatCompletion(ctx, systemPrompt, userContent, 0.7, 45*time.Second)
+	content, err := chatCompletionJSON(ctx, systemPrompt, userContent, 0.7, 45*time.Second)
 	if err != nil {
-		return nil, err
+		// Fallback without json_object constraint if provider doesn't support it
+		content, err = chatCompletion(ctx, systemPrompt, userContent, 0.7, 45*time.Second)
+		if err != nil {
+			return nil, err
+		}
 	}
 	cleanJSON := CleanCodeFence(content)
 
 	var raw struct {
 		Variants []RawGuideOutput `json:"variants"`
 	}
-	if err := json.Unmarshal([]byte(cleanJSON), &raw); err != nil {
-		return nil, fmt.Errorf("не удалось разобрать JSON ответа ИИ: %w", err)
+	if err := json.Unmarshal([]byte(cleanJSON), &raw); err != nil || len(raw.Variants) == 0 {
+		var single RawGuideOutput
+		if err2 := json.Unmarshal([]byte(cleanJSON), &single); err2 == nil && len(single.Steps) > 0 {
+			raw.Variants = []RawGuideOutput{single}
+		} else {
+			return nil, fmt.Errorf("не удалось разобрать JSON ответа ИИ: %w", err)
+		}
 	}
 
 	variants := make([]models.Instruction, 0, 3)
