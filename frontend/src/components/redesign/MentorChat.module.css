@@ -1,0 +1,31 @@
+.mentor { max-width: 1120px; }
+.mentor h1 { margin-bottom: 20px; font-size: clamp(28px, 4vw, 42px); }
+.start { max-width: 560px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--white); }
+.start button, .start a { margin-top: 16px; }
+.start select { cursor: pointer; }
+.layout { display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.context, .chat { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--white); overflow-wrap: anywhere; }
+.context h2 { margin-block: 8px; font-size: 18px; }
+.context h3 { margin-top: 18px; font-size: 14px; }
+.context ul { list-style: none; margin-top: 6px; padding: 0; }
+.context li { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+.context li svg { color: var(--accent-text); }
+.stepText, .turn p { white-space: pre-wrap; }
+.messages { min-height: 144px; max-height: min(52dvh, 580px); overflow: auto; padding: 4px; }
+.welcome { color: var(--muted); }
+.turn { display: grid; gap: 9px; margin-bottom: 14px; }
+.question, .answer { border-radius: 10px; padding: 12px; }
+.question { background: var(--accent-soft); margin-inline-start: 12%; }
+.answer { background: var(--surface-soft); margin-inline-end: 12%; }
+.turn b { display: block; margin-bottom: 4px; font-size: 13px; }
+.turn img, .attachment img { object-fit: contain; object-position: left; max-width: 100%; }
+.composer { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.composer label { font-size: 13px; font-weight: 650; }
+.composer textarea { width: 100%; min-width: 0; padding: 10px; border-radius: 8px; border: 1px solid var(--line); }
+.actions, .attachment { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.actions { justify-content: space-between; }
+.attachment span { max-width: 100%; font-size: 12px; }
+@media (max-width: 1020px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .messages { min-height: 95px; }
+}

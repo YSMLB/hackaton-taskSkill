@@ -1,14 +1,10 @@
 package ai
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -23,13 +19,8 @@ type GenerateGuideRequest struct {
 }
 
 type GenerateGuideResponse struct {
-	Guide models.Instruction `json:"guide"`
-}
-
-func IsConfigured() bool {
-	return os.Getenv("AI_API_KEY") != "" &&
-		os.Getenv("AI_BASE_URL") != "" &&
-		os.Getenv("AI_MODEL") != ""
+	Variants []models.Instruction `json:"variants"`
+	Fallback bool                 `json:"fallback,omitempty"`
 }
 
 func CleanCodeFence(s string) string {
@@ -46,36 +37,11 @@ func CleanCodeFence(s string) string {
 	return s
 }
 
-const systemPrompt = `Ты — ведущий технический методист платформы StepFlow. Твоя задача — составить подробное, практическое и строго структурированное пошаговое руководство по запросу пользователя.
-
-Требования к ответу:
-1. Верни ИСКЛЮЧИТЕЛЬНО валидный JSON без вступительного текста, без сносок и без форматирования вне JSON.
-2. В руководстве должно быть от 3 до 7 логичных, последовательных шагов.
-3. В каждом шаге ОБЯЗАТЕЛЬНО должны быть поля:
-   - "id": уникальный идентификатор шага ("step-1", "step-2" и т.д.);
-   - "title": понятный заголовок шага (до 150 символов);
-   - "text": понятная инструкция с подробным объяснением сути действий;
-   - "checks": массив из 2-4 конкретных проверяемых пунктов чек-листа;
-   - "code": фрагмент кода или терминальной команды (если применимо);
-   - "filename": имя файла (например, "docker-compose.yml", "main.go") или "terminal".
-
-Формат JSON:
-{
-  "title": "Название инструкции",
-  "description": "Краткое описание цели инструкции",
-  "category": "Категория",
-  "minutes": 25,
-  "steps": [
-    {
-      "id": "step-1",
-      "title": "...",
-      "text": "...",
-      "code": "...",
-      "filename": "...",
-      "checks": ["...", "..."]
-    }
-  ]
-}`
+const systemPrompt = `Предложи автору StepFlow три самостоятельные пошаговые инструкции на одну заданную тему.
+Дай три разных подхода, например быстрый, для новичка и с дополнительной проверкой. Отрази отличие каждого подхода в названии и описании. Каждый вариант должен приводить к результату и содержать 3–4 шага.
+Пиши кратко: 1–2 предложения на шаг и 1–2 конкретные проверки. Поля code и filename добавляй только при необходимости.
+Верни только JSON с массивом variants из трёх объектов. Пример структуры одного элемента массива:
+{"title":"Название","description":"Суть подхода","category":"Учёба","minutes":15,"steps":[{"title":"Действие","text":"Как выполнить действие","checks":["Что проверить"]}]}.`
 
 type RawStep struct {
 	ID       string   `json:"id"`
@@ -94,7 +60,7 @@ type RawGuideOutput struct {
 	Steps       []RawStep `json:"steps"`
 }
 
-func GenerateGuideDraft(ctx context.Context, prompt string, category string, minutes int, authorProfile *models.Profile) (*models.Instruction, error) {
+func GenerateGuideVariants(ctx context.Context, prompt string, category string, minutes int, authorProfile *models.Profile) ([]models.Instruction, error) {
 	prompt = strings.TrimSpace(prompt)
 	if len([]rune(prompt)) < 5 || len([]rune(prompt)) > 1000 {
 		return nil, errors.New("опиши тему инструкции подробнее (от 5 до 1000 символов)")
@@ -107,100 +73,36 @@ func GenerateGuideDraft(ctx context.Context, prompt string, category string, min
 		minutes = 20
 	}
 
-	// Попытка сгенерировать через сконфигурированный AI провайдер
-	guide, err := callAIProvider(ctx, prompt, category, minutes, authorProfile)
-	if err == nil && guide != nil {
-		return guide, nil
-	}
-
-	// Если модель недоступна, нет сети или провайдер вернул ошибку,
-	// используем детерминированный контекстный генератор шаблонов
-	return FallbackGuideDraft(prompt, category, minutes, authorProfile)
-}
-
-func callAIProvider(ctx context.Context, prompt string, category string, minutes int, authorProfile *models.Profile) (*models.Instruction, error) {
-	if !IsConfigured() {
-		return nil, errors.New("ИИ-сервис генерации не настроен на сервере")
-	}
-
-	baseURLStr := os.Getenv("AI_BASE_URL")
-	base, err := url.Parse(baseURLStr)
-	if err != nil {
-		return nil, errors.New("некорректный AI_BASE_URL")
-	}
-
-	isLocal := base.Hostname() == "localhost" || base.Hostname() == "127.0.0.1" || base.Hostname() == "::1"
-	if base.Scheme != "https" && !(base.Scheme == "http" && isLocal) {
-		return nil, errors.New("небезопасный AI_BASE_URL запрещен")
-	}
-
-	apiURL := fmt.Sprintf("%s/chat/completions", strings.TrimRight(baseURLStr, "/"))
-
 	userContent := fmt.Sprintf("Тема: %s\nКатегория: %s\nПримерное время: %d минут", prompt, category, minutes)
 
-	type chatMessage struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	}
-	type chatRequest struct {
-		Model       string        `json:"model"`
-		Messages    []chatMessage `json:"messages"`
-		Temperature float64       `json:"temperature"`
-	}
-
-	reqBody, err := json.Marshal(chatRequest{
-		Model:       os.Getenv("AI_MODEL"),
-		Temperature: 0.7,
-		Messages: []chatMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userContent},
-		},
-	})
+	content, err := chatCompletion(ctx, systemPrompt, userContent, 0.7, 45*time.Second)
 	if err != nil {
 		return nil, err
 	}
+	cleanJSON := CleanCodeFence(content)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, err
+	var raw struct {
+		Variants []RawGuideOutput `json:"variants"`
 	}
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("AI_API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 45 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("ИИ сервис вернул статус %d", resp.StatusCode)
-	}
-
-	var chatResp struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return nil, err
-	}
-
-	if len(chatResp.Choices) == 0 {
-		return nil, errors.New("нейросеть не вернула вариант ответа")
-	}
-
-	cleanJSON := CleanCodeFence(chatResp.Choices[0].Message.Content)
-
-	var raw RawGuideOutput
 	if err := json.Unmarshal([]byte(cleanJSON), &raw); err != nil {
 		return nil, fmt.Errorf("не удалось разобрать JSON ответа ИИ: %w", err)
 	}
 
-	return SanitizeGuideOutput(raw, category, minutes, authorProfile)
+	variants := make([]models.Instruction, 0, 3)
+	for _, candidate := range raw.Variants {
+		guide, err := SanitizeGuideOutput(candidate, category, minutes, authorProfile)
+		if err != nil {
+			continue
+		}
+		variants = append(variants, *guide)
+		if len(variants) == 3 {
+			break
+		}
+	}
+	if len(variants) == 0 {
+		return nil, errors.New("ИИ не вернул ни одного варианта с шагами")
+	}
+	return variants, nil
 }
 
 func FallbackGuideDraft(prompt, category string, minutes int, authorProfile *models.Profile) (*models.Instruction, error) {

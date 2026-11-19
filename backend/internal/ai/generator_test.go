@@ -1,11 +1,48 @@
 package ai_test
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"stepflow/backend/internal/ai"
 	"stepflow/backend/internal/models"
 )
+
+func TestGenerateGuideVariants(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		content := `{"variants":[
+			{"title":"Короткий отчёт","steps":[{"title":"Запиши результат","text":"Запиши числа в таблицу."}]},
+			{"title":"Пустой ответ","steps":[]},
+			{"title":"Отчёт с образцом","steps":[{"title":"Скачай образец","text":"Возьми шаблон отчёта."}]},
+			{"title":"Проверка отчёта","steps":[{"title":"Сверь данные","text":"Сравни числа с журналом."}]}
+		]}`
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{map[string]any{"message": map[string]string{"content": content}}},
+		}); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("AI_BASE_URL", server.URL+"/v1")
+	t.Setenv("AI_API_KEY", "test")
+	t.Setenv("AI_MODEL", "test")
+
+	variants, err := ai.GenerateGuideVariants(context.Background(), "Подготовить отчёт", "", 15, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(variants) != 3 || variants[1].Title != "Отчёт с образцом" ||
+		variants[2].Steps[0].Title != "Сверь данные" || variants[0].ID == variants[1].ID {
+		t.Fatalf("unexpected variants: %+v", variants)
+	}
+}
 
 func TestCleanCodeFence(t *testing.T) {
 	cases := []struct {
@@ -19,13 +56,13 @@ func TestCleanCodeFence(t *testing.T) {
 			expected: `{"title":"test"}`,
 		},
 		{
-			name: "markdown json code block",
-			input: "```json\n{\"title\":\"test\"}\n```",
+			name:     "markdown json code block",
+			input:    "```json\n{\"title\":\"test\"}\n```",
 			expected: `{"title":"test"}`,
 		},
 		{
-			name: "markdown generic code block",
-			input: "```\n{\"title\":\"test\"}\n```",
+			name:     "markdown generic code block",
+			input:    "```\n{\"title\":\"test\"}\n```",
 			expected: `{"title":"test"}`,
 		},
 	}
@@ -59,10 +96,10 @@ func TestSanitizeGuideOutput(t *testing.T) {
 				Checks:   []string{"Пункт 1", "  Пункт 2  "},
 			},
 			{
-				ID:       "", // should auto-generate step-2
-				Title:    "", // should auto-generate Шаг 2
-				Text:     "Текст второго шага",
-				Checks:   []string{}, // should provide default check
+				ID:     "", // should auto-generate step-2
+				Title:  "", // should auto-generate Шаг 2
+				Text:   "Текст второго шага",
+				Checks: []string{}, // should provide default check
 			},
 		},
 	}

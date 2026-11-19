@@ -2,19 +2,18 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type RefObject } from 'react';
-import { ArrowUpRight, Check, ChevronsLeft, ChevronsRight, Download, LayoutGrid, Menu, Plus, ShieldCheck, UserRound, Users, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type RefObject } from 'react';
+import { ArrowUpRight, Check, ChevronsLeft, ChevronsRight, Download, LayoutGrid, Menu, MessageSquareText, Plus, ShieldCheck, UserRound, Users, X } from 'lucide-react';
 import { useStore } from './store';
 import { RegistrationForm, type AuthMode } from './RegistrationForm';
 import { isAdmin } from '@shared/community';
 import styles from './Chrome.module.css';
-import { ProfileAvatar } from './ProfileAvatar';
 import { NotificationMenu } from './NotificationMenu';
 
-type AppSection = 'catalog' | 'library' | 'author' | 'moderation' | 'profile' | 'team';
+type AppSection = 'catalog' | 'library' | 'author' | 'moderation' | 'profile' | 'team' | 'mentor';
 
-export function Logo({ href = '/' }: { href?: string }) {
-  return <Link className="brand" href={href} aria-label={href === '/catalog' ? 'StepFlow — каталог инструкций' : 'StepFlow — главная'}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>StepFlow<span className="logo-dot">.</span></Link>;
+export function Logo({ href = '/', onClick }: { href?: string; onClick?: () => void }) {
+  return <Link className="brand" href={href} onClick={onClick} aria-label={href === '/catalog' ? 'StepFlow, каталог инструкций' : 'StepFlow, главная'}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className={styles.brandName}>StepFlow<span className="logo-dot">.</span></span></Link>;
 }
 
 function useHeaderMenu() {
@@ -22,7 +21,10 @@ function useHeaderMenu() {
   const menuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && menu) { setMenu(false); menuButton.current?.focus(); }
+      if (event.key === 'Escape' && menu && !document.querySelector(':popover-open')) {
+        setMenu(false);
+        menuButton.current?.focus();
+      }
     };
     window.addEventListener('keydown', close);
     return () => window.removeEventListener('keydown', close);
@@ -118,6 +120,8 @@ function saveSidebarPreference(key: string, value: string | number | boolean) {
 
 export function WorkShell({ active, children }: { active: AppSection; children: React.ReactNode }) {
   const { menu, setMenu, menuButton } = useHeaderMenu();
+  const sidebarId = useId();
+  const navigationId = sidebarId + '-navigation';
   const savedCollapsed = useSyncExternalStore(subscribeSidebar, readSidebar, () => false);
   const savedWidth = useSyncExternalStore(subscribeSidebar, readSidebarWidth, () => defaultSidebarWidth);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -129,6 +133,7 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
   const groups = [
     { label: 'Инструкции', links: [
       { href: '/catalog', label: 'Каталог', current: active === 'catalog', Icon: LayoutGrid },
+      { href: '/mentor', label: 'STEPWISE AI', current: active === 'mentor', Icon: MessageSquareText },
       { href: '/offline', label: 'Офлайн', current: false, Icon: Download },
     ] },
     { label: 'Аккаунт', links: [
@@ -183,29 +188,28 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
 
   return <div className={styles.shell} style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties} data-collapsed={collapsed} data-resizing={dragWidth !== null}>
     <a href="#main-content" className="skip-link">К содержимому</a>
-    <header className={styles.appHeader} aria-label="Приложение StepFlow">
-      <div className={styles.appHeaderInner}>
-        <button ref={menuButton} className={styles.appMenuButton} aria-label={menu ? 'Закрыть меню' : 'Открыть меню'} aria-expanded={menu} aria-controls="app-navigation" onClick={() => setMenu(!menu)}>{menu ? <X size={21} /> : <Menu size={21} />}</button>
-        <Logo href="/catalog" />
-        <div className={styles.appActions}>
-          <Link className={styles.createButton} href="/editor" aria-label="Создать инструкцию"><Plus size={18} aria-hidden="true" /><span>Создать инструкцию</span></Link>
-          <NotificationMenu />
-          <Link className={styles.profileButton} href="/profile" aria-label="Открыть профиль" title="Мой профиль"><ProfileAvatar photo={profile?.avatar} name={profile?.name} /></Link>
-        </div>
-      </div>
-    </header>
+    <button ref={menuButton} type="button" className={styles.appMenuButton}
+      aria-label={menu ? 'Закрыть меню' : 'Открыть меню'} aria-expanded={menu}
+      aria-controls={sidebarId} onClick={() => setMenu(!menu)}>
+      {menu ? <X size={21} aria-hidden="true" /> : <Menu size={21} aria-hidden="true" />}
+    </button>
     {menu && <button className={styles.drawerShade} tabIndex={-1} aria-label="Закрыть навигацию" onClick={() => { setMenu(false); menuButton.current?.focus(); }} />}
-    <aside className={styles.sidebar} data-open={menu}>
-      <nav id="app-navigation" aria-label="Навигация приложения">
+    <aside id={sidebarId} aria-label="Сайдбар StepFlow" className={styles.sidebar} data-open={menu}>
+      <div className={styles.sidebarBrand}><Logo href="/catalog" onClick={() => setMenu(false)} /></div>
+      <Link className={styles.createButton} href="/editor" title={collapsed ? 'Создать инструкцию' : undefined} onClick={() => setMenu(false)}>
+        <Plus size={18} aria-hidden="true" /><span>Создать инструкцию</span>
+      </Link>
+      <nav id={navigationId} aria-label="Навигация приложения">
         {groups.map(group => <div className={styles.sidebarGroup} role="group" key={group.label} aria-label={group.label}>
           <p className={styles.groupTitle} aria-hidden="true">{group.label}</p>
           {group.links.map(({ href, label, current, Icon }) => {
             const NavLink = href === '/offline' ? 'a' : Link;
             return <NavLink key={href} href={href} title={collapsed ? label : undefined} aria-current={current ? 'page' : undefined} onClick={() => setMenu(false)}><Icon size={18} aria-hidden="true" /><span>{label}</span></NavLink>;
           })}
+          {group.label === 'Аккаунт' && <NotificationMenu collapsed={collapsed} onNavigate={() => setMenu(false)} />}
         </div>)}
       </nav>
-        <button type="button" className={styles.sidebarToggle} onClick={() => saveSidebarPreference(sidebarCollapseKey, !collapsed)} aria-expanded={!collapsed} aria-controls="app-navigation" aria-label={collapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'} title={collapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'}>
+        <button type="button" className={styles.sidebarToggle} onClick={() => saveSidebarPreference(sidebarCollapseKey, !collapsed)} aria-expanded={!collapsed} aria-controls={navigationId} aria-label={collapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'} title={collapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'}>
           {collapsed ? <ChevronsRight size={16} aria-hidden="true" /> : <ChevronsLeft size={16} aria-hidden="true" />}
           <span>{collapsed ? 'Развернуть' : 'Свернуть меню'}</span>
         </button>
@@ -216,7 +220,7 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
         title="Потяни, чтобы изменить ширину"
         aria-label="Ширина сайдбара"
         aria-orientation="vertical"
-        aria-controls="app-navigation"
+        aria-controls={navigationId}
         aria-valuemin={64}
         aria-valuemax={maxSidebarWidth}
         aria-valuenow={collapsed ? 64 : sidebarWidth}

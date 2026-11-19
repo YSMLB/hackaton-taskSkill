@@ -38,6 +38,7 @@ func main() {
 	mux.HandleFunc("GET /api/search", srv.HandleSearchGet)
 	mux.HandleFunc("POST /api/search", srv.HandleSearchPost)
 	mux.HandleFunc("POST /api/ai/generate-guide", srv.HandleGenerateGuide)
+	mux.HandleFunc("POST /api/ai/step-hint", srv.HandleStepHint)
 	mux.HandleFunc("GET /api/guides/{id}", srv.HandleGuideGet)
 	mux.HandleFunc("GET /api/health", srv.HandleHealth)
 	mux.HandleFunc("GET /health", srv.HandleHealth)

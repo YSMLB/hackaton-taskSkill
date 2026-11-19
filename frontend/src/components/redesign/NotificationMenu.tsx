@@ -6,7 +6,7 @@ import { Bell, X } from 'lucide-react';
 import { useStore } from './store';
 import styles from './NotificationMenu.module.css';
 
-export function NotificationMenu() {
+export function NotificationMenu({ collapsed, onNavigate }: { collapsed: boolean; onNavigate: () => void }) {
   const { data, send, pending } = useStore();
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
@@ -15,10 +15,11 @@ export function NotificationMenu() {
 
   function close() { panel.current?.hidePopover(); }
 
-  return <div className={styles.anchor}>
+  return <div className={styles.anchor} data-collapsed={collapsed}>
     <button type="button" className={styles.trigger} popoverTarget={id}
-      aria-label={`Уведомления, непрочитанных: ${unread}`} aria-haspopup="dialog">
+      aria-label={`Уведомления, непрочитанных: ${unread}`} title={collapsed ? 'Уведомления' : undefined} aria-haspopup="dialog">
       <Bell size={19} aria-hidden="true" />
+      <span className={styles.label}>Уведомления</span>
       {unread > 0 && <span className={styles.badge}>{unread > 99 ? '99+' : unread}</span>}
     </button>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-labelledby={id + '-title'} className={styles.panel}>
@@ -32,6 +33,7 @@ export function NotificationMenu() {
         {recent.map(notice => <li key={notice.id}>
           <Link href={notice.href} data-unread={!notice.read} onClick={() => {
             close();
+            onNavigate();
             if (!notice.read) void send({ type: 'notices-read', id: notice.id });
           }}>
             <span className={styles.dot} aria-label={notice.read ? undefined : 'Не прочитано'} />
@@ -41,7 +43,7 @@ export function NotificationMenu() {
           </Link>
         </li>)}
       </ul> : <div className={styles.empty}><Bell size={25} aria-hidden="true" /><p>Уведомлений пока нет</p></div>}
-      <Link className={styles.showAll} href="/notifications" onClick={close}>Показать все</Link>
+      <Link className={styles.showAll} href="/notifications" onClick={() => { close(); onNavigate(); }}>Показать все</Link>
     </div>
   </div>;
 }

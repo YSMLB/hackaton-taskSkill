@@ -371,6 +371,17 @@ func computeMetrics(state *models.State, guide models.Instruction) models.GuideM
 			reports = append(reports, rep)
 		}
 	}
+	questionsByStep := make(map[string]int)
+	questionAuthorsByStep := make(map[string]map[string]bool)
+	for _, report := range reports {
+		questionsByStep[report.StepID]++
+		if report.AuthorID != "" {
+			if questionAuthorsByStep[report.StepID] == nil {
+				questionAuthorsByStep[report.StepID] = make(map[string]bool)
+			}
+			questionAuthorsByStep[report.StepID][report.AuthorID] = true
+		}
+	}
 
 	var startedRuns []models.Run
 	for _, run := range runs {
@@ -446,19 +457,13 @@ func computeMetrics(state *models.State, guide models.Instruction) models.GuideM
 			}
 		}
 
-		uniqueQuestionAuthors := make(map[string]bool)
-		for _, rep := range reports {
-			if rep.StepID == step.ID && rep.AuthorID != "" {
-				uniqueQuestionAuthors[rep.AuthorID] = true
-			}
-		}
-
 		stepMetrics[i] = models.StepMetric{
-			StepID:    step.ID,
-			Started:   stepStarted,
-			Completed: stepCompleted,
-			Stopped:   stepStopped,
-			Questions: len(uniqueQuestionAuthors),
+			StepID:          step.ID,
+			Started:         stepStarted,
+			Completed:       stepCompleted,
+			Stopped:         stepStopped,
+			Questions:       questionsByStep[step.ID],
+			QuestionAuthors: len(questionAuthorsByStep[step.ID]),
 		}
 	}
 
@@ -604,6 +609,26 @@ func (s *Storage) GetPublishedGuide(id string) (*models.Instruction, error) {
 		}
 	}
 	return nil, nil
+}
+
+func (s *Storage) GuideForStepHint(token, guideID string) (*models.Instruction, []string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := s.loadState(nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	profile := s.profileFor(nil, state, token)
+	if profile == nil {
+		return nil, nil, NewWorkspaceError("Войди в аккаунт, чтобы получить подсказку.", 401)
+	}
+	for _, guide := range state.Guides {
+		if guide.ID == guideID && guide.Status == models.StatusPublished && visible(state, guide, profile) {
+			return &guide, state.Runs[guideID][models.ActorID(*profile)].Completed, nil
+		}
+	}
+	return nil, nil, NewWorkspaceError("Инструкция не найдена.", 404)
 }
 
 func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.CommandResult, nextToken *string, err error) {

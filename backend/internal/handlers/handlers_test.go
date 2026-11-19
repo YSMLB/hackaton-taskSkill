@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"stepflow/backend/internal/handlers"
@@ -157,4 +158,58 @@ func TestHandlersFlow(t *testing.T) {
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 when AI unconfigured, got %d: %s", w.Code, w.Body.String())
 	}
+
+	t.Run("learner step hint", func(t *testing.T) {
+		hintRequest := func(step string, cookie *http.Cookie) *httptest.ResponseRecorder {
+			input, err := json.Marshal(map[string]string{
+				"guideId": "lab-report", "stepId": step, "question": "Где взять шаблон?",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/ai/step-hint", bytes.NewReader(input))
+			req.Header.Set("Content-Type", "application/json")
+			if cookie != nil {
+				req.AddCookie(cookie)
+			}
+			response := httptest.NewRecorder()
+			srv.HandleStepHint(response, req)
+			return response
+		}
+		for _, tt := range []struct {
+			step   string
+			cookie *http.Cookie
+			want   int
+		}{
+			{"lab-1", nil, http.StatusUnauthorized},
+			{"missing-step", sessionCookie, http.StatusNotFound},
+			{"lab-1", sessionCookie, http.StatusServiceUnavailable},
+		} {
+			if got := hintRequest(tt.step, tt.cookie); got.Code != tt.want {
+				t.Fatalf("hint status %d, want %d: %s", got.Code, tt.want, got.Body.String())
+			}
+		}
+		provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var input struct{ Messages []struct{ Content string } }
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil || len(input.Messages) != 2 {
+				t.Errorf("invalid model request: %v", err)
+				return
+			}
+			context := input.Messages[1].Content
+			for _, content := range []string{"Собери материалы", "Где взять шаблон?", "checks"} {
+				if !strings.Contains(context, content) {
+					t.Errorf("missing %q in model request", content)
+				}
+			}
+			w.Write([]byte(`{"choices":[{"message":{"content":"Начни с задания и журнала опыта."}}]}`))
+		}))
+		defer provider.Close()
+		t.Setenv("AI_BASE_URL", provider.URL+"/v1")
+		t.Setenv("AI_MODEL", "test")
+		t.Setenv("AI_API_KEY", "test")
+		got := hintRequest("lab-1", sessionCookie)
+		if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), "Начни с задания") {
+			t.Fatalf("unexpected hint: %d %s", got.Code, got.Body.String())
+		}
+	})
 }

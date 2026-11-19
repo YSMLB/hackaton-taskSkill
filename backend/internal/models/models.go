@@ -113,11 +113,12 @@ func DefaultRun() Run {
 }
 
 type StepMetric struct {
-	StepID    string `json:"stepId"`
-	Started   int    `json:"started"`
-	Completed int    `json:"completed"`
-	Stopped   int    `json:"stopped"`
-	Questions int    `json:"questions"`
+	StepID          string `json:"stepId"`
+	Started         int    `json:"started"`
+	Completed       int    `json:"completed"`
+	Stopped         int    `json:"stopped"`
+	Questions       int    `json:"questions"`
+	QuestionAuthors int    `json:"questionAuthors"`
 }
 
 type GuideMetrics struct {

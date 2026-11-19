@@ -69,16 +69,32 @@ func (s *Server) HandleGenerateGuide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	guide, err := ai.GenerateGuideDraft(r.Context(), prompt, req.Category, req.Minutes, profile)
+	variants, err := ai.GenerateGuideVariants(r.Context(), prompt, req.Category, req.Minutes, profile)
+	fallback := err != nil && r.Context().Err() == nil
+	if fallback {
+		category, minutes := req.Category, req.Minutes
+		if category == "" {
+			category = "Учёба"
+		}
+		if minutes < 5 || minutes > 1440 {
+			minutes = 20
+		}
+		guide, fallbackErr := ai.FallbackGuideDraft(prompt, category, minutes, profile)
+		if fallbackErr == nil {
+			variants = append(variants, *guide)
+			err = nil
+		}
+	}
 	if err != nil {
 		s.writeJSON(w, http.StatusBadGateway, map[string]string{
-			"message": "ИИ-сервис не смог сгенерировать инструкцию. Попробуй изменить тему или создать вручную.",
+			"message": "Не удалось получить варианты. Попробуй ещё раз или продолжи вручную.",
 		}, nil)
 		return
 	}
 
 	s.writeJSON(w, http.StatusOK, ai.GenerateGuideResponse{
-		Guide: *guide,
+		Variants: variants,
+		Fallback: fallback,
 	}, map[string]string{
 		"Cache-Control": "private, no-store",
 	})

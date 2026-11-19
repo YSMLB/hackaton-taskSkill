@@ -1,10 +1,12 @@
 .anchor { position: relative; }
-.trigger { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 42px; min-height: 42px; border: 1px solid var(--line); border-radius: 9px; padding-inline: 7px; }
-.trigger:hover, .trigger[aria-expanded="true"] { background: var(--accent-soft); }
+.trigger { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; border: 0; border-radius: 10px; padding: 6px 8px; font-size: 13px; font-weight: 650; }
+.trigger svg { box-sizing: content-box; padding: 6px; border-radius: 8px; background: var(--surface-soft); color: var(--muted); }
+.trigger:hover, .trigger:active { background: var(--surface-soft); }
+.trigger:focus-visible { outline-offset: -2px; }
 .badge { background: var(--accent); color: var(--on-action); border-radius: 7px; padding: 1px 5px; font-size: 11px; }
 .panel {
   position: fixed;
-  inset: 60px 28px auto auto;
+  inset: 16px auto auto calc(var(--rail-width) + 24px);
   margin: 0;
   width: min(380px, calc(100vw - 24px));
   max-height: calc(100dvh - 84px);
@@ -32,4 +34,9 @@
 .empty { display: grid; justify-items: center; gap: 12px; padding: 36px 18px; color: var(--muted); font-size: 13px; }
 .showAll { display: block; flex: none; padding: 13px 18px; border-top: 1px solid var(--line); text-align: center; color: var(--action); font-size: 13px; font-weight: 700; }
 .showAll:hover { background: var(--accent-soft); }
-@media (max-width: 540px) { .panel { right: 12px; } }
+@media (min-width: 841px) {
+  .anchor[data-collapsed="true"] .trigger { justify-content: center; padding-inline: 0; }
+  .anchor[data-collapsed="true"] .label { display: none; }
+  .anchor[data-collapsed="true"] .badge { position: absolute; top: 1px; right: 0; }
+}
+@media (max-width: 840px) { .panel { inset: 64px auto auto 12px; max-height: calc(100dvh - 76px); } }

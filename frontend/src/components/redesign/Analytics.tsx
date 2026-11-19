@@ -15,8 +15,9 @@ export function Analytics({ guide }: { guide?: Instruction }) {
     <h1>Статистика доступна автору</h1><Link href="/author">Мои инструкции</Link>
   </div>;
   const worst = stats.steps.reduce<typeof stats.steps[number] | undefined>((best, step) => {
-    const signals = step.stopped + step.questions;
-    return signals > (best ? best.stopped + best.questions : 0) ? step : best;
+    const signals = step.stopped + (step.questionAuthors ?? step.questions);
+    const bestSignals = best ? best.stopped + (best.questionAuthors ?? best.questions) : 0;
+    return signals > bestSignals ? step : best;
   }, undefined);
   const worstStep = worst && guide.steps.find(step => step.id === worst.stepId);
 
@@ -31,16 +32,16 @@ export function Analytics({ guide }: { guide?: Instruction }) {
       <div><span>Вопросов к шагам</span><strong>{stats.reports.length}</strong></div>
     </div>
     {worstStep && worst && <section className="bottleneck-panel">
-      <div><span className="section-label">Шаг, который стоит проверить</span><h2>{worstStep.title}</h2>
-        <p>Остановились на шаге: {worst.stopped}. Попросили помощь: {worst.questions}.</p>
+      <div><span className="section-label">Где нужна помощь</span><h2>{worstStep.title}</h2>
+        <p>Открыли шаг: {worst.started}. Незавершённых прохождений: {worst.stopped}. Вопросов: {worst.questions}.</p>
       </div>
       <Link href={`/editor?id=${guide.id}`} className="button button-dark">Открыть редактор</Link>
     </section>}
     <section className="analytics-table-panel">
       <h2>Прохождение по шагам</h2>
-      <p className="muted">Здесь видно, на каком незавершённом шаге сейчас находится каждый читатель. Предпросмотр автора не входит в статистику.</p>
-      <div className="table-scroll"><table>
-        <thead><tr><th>Шаг</th><th>Открыли</th><th>Выполнили</th><th>Остановились</th><th>Попросили помощь</th></tr></thead>
+      <p className="muted">В колонке «Открыли шаг» каждый читатель учитывается один раз. Последний незавершённый шаг показывает текущий прогресс. Предпросмотр автора не учитывается.</p>
+      <div className="table-scroll" tabIndex={0} role="region" aria-label="Статистика по шагам"><table>
+        <thead><tr><th>Шаг</th><th>Открыли шаг</th><th>Выполнили</th><th>Последний незавершённый шаг</th><th>Вопросов</th></tr></thead>
         <tbody>{stats.steps.map((step, index) => <tr key={step.stepId} className={worst?.stepId === step.stepId ? 'problem-row' : undefined}>
           <th scope="row"><span>{index + 1}. {guide.steps[index].title}</span>
             <div className="progress-track"><span style={{ width: `${step.started ? step.completed / step.started * 100 : 0}%` }} /></div>

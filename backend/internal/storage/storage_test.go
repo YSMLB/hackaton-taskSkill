@@ -187,4 +187,63 @@ func TestGuideSaveAndModerate(t *testing.T) {
 	if pub.Status != models.StatusPublished {
 		t.Fatalf("expected status published, got %s", pub.Status)
 	}
+
+	t.Run("progress and questions", func(t *testing.T) {
+		send := func(token string, command map[string]any) *string {
+			t.Helper()
+			input, err := json.Marshal(command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, next, err := store.ChangeWorkspace(token, input)
+			if err != nil {
+				t.Fatalf("%v: %v", command, err)
+			}
+			return next
+		}
+		learner := send("", map[string]any{"type": "register", "profile": map[string]any{
+			"email": "learner@example.test", "name": "Ученик", "role": "Ученик",
+		}})
+		if learner == nil {
+			t.Fatal("learner session missing")
+		}
+		stepID := pub.Steps[0].ID
+		visit := map[string]any{"type": "visit", "guideId": guideID, "stepId": stepID}
+		send(*learner, visit)
+		send(*learner, visit)
+		send(*authorToken, visit)
+		read := func() models.GuideMetrics {
+			t.Helper()
+			snapshot, err := store.ReadWorkspace(*authorToken)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stats := snapshot.Data.Analytics[guideID]
+			if len(stats.Steps) != 1 {
+				t.Fatalf("expected one step, got %+v", stats)
+			}
+			return stats
+		}
+		if step := read().Steps[0]; step.Started != 1 || step.Stopped != 1 {
+			t.Fatalf("expected one learner on the step, got %+v", step)
+		}
+		for _, question := range []string{"Где взять исходные данные?", "В каком формате сохранить?"} {
+			send(*learner, map[string]any{"type": "help", "guideId": guideID, "stepId": stepID, "text": question})
+		}
+		send(*learner, map[string]any{"type": "check", "guideId": guideID, "stepId": stepID, "index": 0, "checked": true})
+		send(*learner, map[string]any{"type": "complete", "guideId": guideID, "stepId": stepID})
+		stats := read()
+		if step := stats.Steps[0]; step.Started != 1 || step.Stopped != 0 || step.Completed != 1 ||
+			step.Questions != 2 || step.QuestionAuthors != 1 {
+			t.Fatalf("unexpected metrics after completion: %+v", step)
+		}
+		if len(stats.Reports) != 2 {
+			t.Fatalf("expected both questions in history: %+v", stats.Reports)
+		}
+		answer := "Сохрани отчёт в PDF."
+		send(*authorToken, map[string]any{"type": "reply", "guideId": guideID, "reportId": stats.Reports[1].ID, "text": answer})
+		if got := read().Reports[1].Reply; got != answer {
+			t.Fatalf("saved reply = %q, want %q", got, answer)
+		}
+	})
 }

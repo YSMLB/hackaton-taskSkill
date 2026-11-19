@@ -16,6 +16,8 @@ type Store = WorkspaceSnapshot & {
   refresh: () => Promise<void>;
   send: (command: Command) => Promise<CommandResult | null>;
   notify: (message: string) => void;
+  catalogSort: 'default' | 'helpful';
+  setCatalogSort: (sort: 'default' | 'helpful') => void;
 };
 
 const Context = createContext<Store | null>(null);
@@ -36,6 +38,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [catalogSort, setCatalogSort] = useState<Store['catalogSort']>('default');
   const version = useRef(0);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const work = useRef(0);
@@ -108,7 +111,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return task;
   }, []);
 
-  return <Context.Provider value={{ ...snapshot, ready, pending, error, refresh, send, notify: setMessage }}>
+  return <Context.Provider value={{ ...snapshot, ready, pending, error, refresh, send, notify: setMessage, catalogSort, setCatalogSort }}>
     {children}
     {error && <div className="storage-error" role="alert">{error}</div>}
     {message && <div className="toast" role="status">{message}</div>}
