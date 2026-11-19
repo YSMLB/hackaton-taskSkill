@@ -22,7 +22,7 @@
 .ratingCopy { min-width: 0; }
 .panel .heading {
   margin: 0;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 700;
   line-height: 1.4;
   letter-spacing: -.35px;
@@ -30,7 +30,7 @@
 
 .panel .description {
   margin: 6px 0 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.6;
   color: var(--muted);
 }
@@ -49,7 +49,7 @@
   background: var(--white);
   color: var(--muted);
   font: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.4;
   cursor: pointer;
@@ -65,7 +65,7 @@
   background: var(--surface-hover);
   color: var(--muted);
   text-align: center;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -96,17 +96,17 @@
   background: transparent;
   color: var(--graphite);
   font: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.4;
   cursor: pointer;
 }
 
 .forkButton:hover { background: var(--surface-soft); border-color: var(--line-strong); }
-.panel .origin { margin: 0 0 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
+.panel .origin { margin: 0 0 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); font-size: 0.75rem; line-height: 1.7; color: var(--muted); overflow-wrap: anywhere; }
 .origin a { color: var(--graphite); text-decoration: underline; text-underline-offset: 3px; }
 .origin span { display: block; }
-.catalogRating { display: flex; align-items: center; gap: 6px; margin-bottom: 15px; color: var(--accent-text); font-size: 11px; }
+.catalogRating { display: flex; align-items: center; gap: 6px; margin-bottom: 15px; color: var(--accent-text); font-size: 0.6875rem; }
 
 @media (max-width: 1100px) {
   .fork { flex-wrap: wrap; }
@@ -118,9 +118,9 @@
   .panel { padding: 20px 16px 0; border-radius: 12px; }
   .rating { flex-direction: column; align-items: stretch; gap: 16px; padding-bottom: 20px; }
   .votes { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-  .vote { gap: 6px; padding: 10px 7px; font-size: 12px; }
-  .count { min-width: 20px; font-size: 11px; }
-  .panel .description { font-size: 12px; }
+  .vote { gap: 6px; padding: 10px 7px; font-size: 0.75rem; }
+  .count { min-width: 20px; font-size: 0.6875rem; }
+  .panel .description { font-size: 0.75rem; }
   .fork { gap: 12px; padding: 18px 0; }
   .forkIcon { flex-basis: 36px; height: 36px; border-radius: 9px; }
   .forkCopy { flex-basis: calc(100% - 48px); }

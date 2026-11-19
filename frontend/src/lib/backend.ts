@@ -1,11 +1,18 @@
 import 'server-only';
 import type { NextRequest } from 'next/server';
+import { aiDisabledCookie } from './ai-cookie';
 
 export function backendURL(path: string) {
   return new URL(path, process.env.STEPFLOW_BACKEND_URL || 'http://127.0.0.1:8080');
 }
 
 export async function proxyBackend(request: NextRequest, path: string) {
+  if ((path === '/api/search' || path.startsWith('/api/ai/')) && request.cookies.get(aiDisabledCookie)?.value === '1') {
+    return Response.json({ configured: false, message: 'ИИ отключён в настройках сайта.' }, {
+      status: request.method === 'GET' ? 200 : 403,
+      headers: { 'Cache-Control': 'private, no-store' },
+    });
+  }
   const headers = new Headers();
   for (const key of ['content-type', 'sec-fetch-site']) {
     const value = request.headers.get(key);

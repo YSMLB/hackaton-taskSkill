@@ -1,16 +1,17 @@
 'use client';
+import { useAiEnabled } from '@/lib/ai-preference';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type RefObject } from 'react';
-import { ArrowUpRight, Check, ChevronsLeft, ChevronsRight, Download, LayoutGrid, Menu, MessageSquareText, Plus, ShieldCheck, UserRound, Users, X } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronsLeft, ChevronsRight, CreditCard, Download, LayoutGrid, Menu, MessageSquareText, Plus, ShieldCheck, UserRound, Users, X } from 'lucide-react';
 import { useStore } from './store';
 import { RegistrationForm, type AuthMode } from './RegistrationForm';
 import { isAdmin } from '@shared/community';
 import styles from './Chrome.module.css';
 import { NotificationMenu } from './NotificationMenu';
 
-type AppSection = 'catalog' | 'library' | 'author' | 'moderation' | 'profile' | 'team' | 'mentor';
+type AppSection = 'catalog' | 'library' | 'author' | 'moderation' | 'profile' | 'team' | 'mentor' | 'subscriptions';
 
 export function Logo({ href = '/', onClick }: { href?: string; onClick?: () => void }) {
   return <Link className="brand" href={href} onClick={onClick} aria-label={href === '/catalog' ? 'StepFlow, каталог инструкций' : 'StepFlow, главная'}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className={styles.brandName}>StepFlow<span className="logo-dot">.</span></span></Link>;
@@ -69,7 +70,7 @@ export function LandingHeader({ dock = false }: { dock?: boolean }) {
       </div>
     </div>
     {menu && <nav className="mobile-nav" id="landing-mobile-nav" aria-label="Мобильная навигация лендинга" onClick={() => setMenu(false)}>
-      <Link href="/#advantages">Почему StepFlow</Link><Link href="/#demo">Попробовать демо</Link>
+      <Link href="/#advantages">Почему StepFlow</Link><Link href="/#demo">Попробовать демо</Link><Link href="/#subscriptions">Подписки</Link>
       {profile ? <><Link href="/catalog">Открыть каталог</Link><Link href="/profile">Мой профиль</Link></> : <><button onClick={() => openAccount('login')}>Войти</button><button onClick={() => openAccount('register')}>Регистрация</button></>}
     </nav>}
   </div>;
@@ -130,15 +131,17 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
   const sidebarWidth = dragWidth === null ? savedWidth : clampSidebarWidth(dragWidth);
   const { profile } = useStore();
   const personal = ['profile', 'author', 'library'].includes(active);
+  const aiEnabled = useAiEnabled();
   const groups = [
     { label: 'Инструкции', links: [
       { href: '/catalog', label: 'Каталог', current: active === 'catalog', Icon: LayoutGrid },
-      { href: '/mentor', label: 'STEPWISE AI', current: active === 'mentor', Icon: MessageSquareText },
+      ...(aiEnabled ? [{ href: '/mentor', label: 'Напарник', current: active === 'mentor', Icon: MessageSquareText }] : []),
       { href: '/offline', label: 'Офлайн', current: false, Icon: Download },
     ] },
     { label: 'Аккаунт', links: [
       { href: '/profile', label: 'Мой профиль', current: personal, Icon: UserRound },
-      { href: '/team', label: 'Подписки и команды', current: active === 'team', Icon: Users },
+      { href: '/team', label: 'Команды', current: active === 'team', Icon: Users },
+      { href: '/subscriptions', label: 'Подписки', current: active === 'subscriptions', Icon: CreditCard },
     ] },
   ];
   if (isAdmin(profile)) {
@@ -236,10 +239,10 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
   </div>;
 }
 
-export function RegistrationGate() {
+export function RegistrationGate({ continueTo = '/catalog' }: { continueTo?: '/catalog' | '/subscriptions' } = {}) {
   const [mode, setMode] = useState<AuthMode>('register');
   const router = useRouter();
-  return <><LandingHeader /><main id="main-content" className="registration-gate"><div className="registration-intro"><span className="section-label">Твоё пространство в StepFlow</span><h1>{mode === 'login' ? 'Продолжим с того же места.' : 'Сначала познакомимся.'}</h1><p>Войди или создай профиль, чтобы открыть каталог, проходить инструкции и сохранять свои материалы.</p><Link className="back-link" href="/">Вернуться на лендинг</Link></div><div className="registration-panel"><RegistrationForm mode={mode} onModeChange={setMode} onComplete={() => router.replace('/catalog')} /></div></main></>;
+  return <><LandingHeader /><main id="main-content" className="registration-gate"><div className="registration-intro"><span className="section-label">Твоё пространство в StepFlow</span><h1>{mode === 'login' ? 'Продолжим с того же места.' : 'Сначала познакомимся.'}</h1><p>{continueTo === '/subscriptions' ? 'Войди или создай профиль, чтобы выбрать тариф.' : 'Войди или создай профиль, чтобы открыть каталог, проходить инструкции и сохранять свои материалы.'}</p><Link className="back-link" href="/">Вернуться на лендинг</Link></div><div className="registration-panel"><RegistrationForm mode={mode} onModeChange={setMode} onComplete={() => router.replace(continueTo)} /></div></main></>;
 }
 
 export function StepBadge({ number, done }: { number: number; done?: boolean }) {

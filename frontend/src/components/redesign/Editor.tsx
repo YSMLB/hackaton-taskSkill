@@ -10,11 +10,13 @@ import { GenerateDraft } from './GenerateDraft';
 import { CoverField } from './GuideCover';
 import { GuideCommunity } from './GuideCommunity';
 import { editorTemplates } from '@/data/editor-templates';
+import { useAiEnabled } from '@/lib/ai-preference';
 
 function blankStep(): Step { return { id: crypto.randomUUID(), title: '', text: '', checks: [] }; }
 export function Editor({ id, teamId }: { id: string | null; teamId: string | null }) {
   const { data, send, pending, notify, profile } = useStore();
   const router = useRouter();
+  const aiEnabled = useAiEnabled();
   const source = data.guides.find(g => g.id === id);
   const team = data.teams.find(item => item.id === (source?.teamId || teamId));
   const [draft, setDraft] = useState<Instruction>(() => source ? structuredClone(source) : { id: 'new', teamId: team?.id, title: '', description: '', category: 'Учёба', minutes: 10, author: 'Вы', owned: true, status: 'draft', steps: [{ id: 'first-step', title: '', text: '', checks: [] }] });
@@ -52,7 +54,7 @@ export function Editor({ id, teamId }: { id: string | null; teamId: string | nul
   if ((source?.teamId || teamId) ? !team?.active : source && !isOwner(source, profile)) return <div className="empty-state"><h1>Редактировать можно свою инструкцию</h1><p>Для изменений создай независимую копию опубликованного материала.</p>{source?.status === 'published' && <GuideCommunity guide={source} />}<Link href="/author" className="button button-dark">Мои инструкции</Link></div>;
   if (id && !source) return <div className="empty-state"><h1>Черновик не найден</h1><Link href="/author" className="button button-dark">К моим инструкциям</Link></div>;
   return <><Link href="/author" className="back-link"><ArrowLeft size={17} />Мои инструкции</Link><div className="editor-top"><div><span className="section-label">Редактор инструкции</span><h1>{draft.title || 'Новая инструкция'}</h1><span className={`editor-save-state ${dirty ? '' : 'saved'}`}>{dirty ? 'Есть несохранённые изменения' : draft.id === 'new' ? 'Новый черновик' : <><Check size={15} />Сохранено</>}</span></div><div className="editor-actions"><button className="button button-outline" disabled={pending} onClick={() => persist(false)}><Save size={16} /><span>Сохранить</span></button><button className="button button-outline" disabled={pending} onClick={() => persist(false, true)}><Eye size={16} /><span>Предпросмотр</span></button><button className="button button-red" disabled={pending} onClick={() => persist(true)}>{team ? 'Опубликовать для команды' : 'Отправить на проверку'}</button></div></div>{source && source.status !== 'draft' && <div className={`moderation-notice ${source.status}`}><strong>{publicationLabels[source.status]}</strong><p>{source.status === 'pending' ? 'Администратор проверит инструкцию перед публикацией. Сохранение новых правок вернёт её в черновик.' : source.status === 'rejected' ? source.moderationNote : 'После изменения материал нужно отправить на проверку заново.'}</p></div>}{source?.source && <p className="fork-origin">Исходник: <Link href={`/guide?id=${source.source.id}`}>{source.source.title}</Link><span>Автор: {source.source.author}</span></p>}{error && <p className="validation-error" role="alert">{error}</p>}{draft.id === 'new' && !dirty && (profile?.role === 'Автор' || profile?.role === 'Администратор') &&
-    <GenerateDraft onApply={fields => {
+    aiEnabled && <GenerateDraft onApply={fields => {
       if (unsaved.current) return;
       patch(fields);
       setActive(0);

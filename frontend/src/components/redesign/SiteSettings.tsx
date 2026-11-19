@@ -1,6 +1,7 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useId, useRef, useSyncExternalStore } from 'react';
+import { setAiEnabled, useAiEnabled } from '@/lib/ai-preference';
 import { accents, appearanceChanged, accentKey } from '@/lib/appearance';
 import styles from './ProfilePage.module.css';
 
@@ -21,6 +22,10 @@ function setAccent(value: string) {
 
 export function SiteSettings() {
   const accent = useSyncExternalStore(subscribe, () => document.documentElement.dataset.accent || 'blue', () => 'blue');
+  const aiEnabled = useAiEnabled();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
 
   return <div className={styles.panel}>
     <h2>Настройки сайта</h2>
@@ -35,5 +40,29 @@ export function SiteSettings() {
       </div>
     </fieldset>
     <p className={styles.appearanceHint}>Выбор сразу применяется и сохраняется в этом браузере.</p>
+    <section className={styles.aiSettings}>
+      <div>
+        <h3>Функции ИИ</h3>
+        <p role="status">{aiEnabled ? 'Разрешены в этом браузере.' : 'Отключены в этом браузере.'}</p>
+      </div>
+      <button type="button" className="button button-outline" onClick={() => {
+        if (aiEnabled) dialog.current?.showModal();
+        else setAiEnabled(true);
+      }}>{aiEnabled ? 'Отключить все функции ИИ' : 'Включить функции ИИ'}</button>
+    </section>
+    <dialog ref={dialog} className={styles.aiDialog} aria-labelledby={titleId} aria-describedby={descriptionId}>
+      <h2 id={titleId}>Отключить ИИ?</h2>
+      <div id={descriptionId}>
+        <p>Если застрянешь, «Напарник» сможет подсказать, что проверить. Он уже видит текущий шаг, поэтому пересказывать инструкцию не придётся.</p>
+        <p>Отключатся «Напарник», ИИ-поиск и генерация черновиков. Обычный поиск и ручной редактор продолжат работать. Вернуть ИИ можно здесь же.</p>
+      </div>
+      <div className={styles.aiDialogActions}>
+        <button type="button" className="button button-outline" onClick={() => dialog.current?.close()}>Оставить включённым</button>
+        <button type="button" className={`button ${styles.aiDisable}`} onClick={() => {
+          setAiEnabled(false);
+          dialog.current?.close();
+        }}>Отключить ИИ</button>
+      </div>
+    </dialog>
   </div>;
 }

@@ -129,7 +129,7 @@ type GuideMetrics struct {
 }
 
 type WorkspaceData struct {
-	Teams     []Team                     `json:"teams"`
+	Teams     []TeamSummary              `json:"teams"`
 	Notices   []Notice                   `json:"notices"`
 	Guides    []Instruction              `json:"guides"`
 	Runs      map[string]Run             `json:"runs"`
@@ -203,6 +203,14 @@ type Team struct {
 	Name      string   `json:"name"`
 	MemberIDs []string `json:"memberIds"`
 	Active    bool     `json:"active"`
+}
+type TeamSummary struct {
+	Team
+	Members []TeamMember `json:"members"`
+}
+type TeamMember struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 type Notice struct {
 	ID        string `json:"id"`

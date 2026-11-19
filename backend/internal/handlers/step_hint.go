@@ -12,6 +12,14 @@ import (
 )
 
 func (s *Server) HandleStepHint(w http.ResponseWriter, r *http.Request) {
+	s.handleHint(w, r, false)
+}
+
+func (s *Server) HandleChat(w http.ResponseWriter, r *http.Request) {
+	s.handleHint(w, r, true)
+}
+
+func (s *Server) handleHint(w http.ResponseWriter, r *http.Request, general bool) {
 	site := r.Header.Get("Sec-Fetch-Site")
 	if site != "" && site != "same-origin" && site != "none" {
 		s.writeError(w, storage.NewWorkspaceError("Запрос должен быть отправлен из StepFlow.", http.StatusForbidden))
@@ -38,7 +46,9 @@ func (s *Server) HandleStepHint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input.Question = strings.TrimSpace(input.Question)
-	if input.GuideID == "" || input.StepID == "" || len([]rune(input.Question)) > 1500 || len(input.History) > 6 {
+	if (!general && (input.GuideID == "" || input.StepID == "")) ||
+		(general && input.Question == "" && input.Screenshot == "") ||
+		len([]rune(input.Question)) > 1500 || len(input.History) > 6 {
 		s.writeError(w, storage.NewWorkspaceError("Не удалось обработать сообщение. Вопрос может содержать до 1500 символов.", http.StatusBadRequest))
 		return
 	}
@@ -56,6 +66,32 @@ func (s *Server) HandleStepHint(w http.ResponseWriter, r *http.Request) {
 	var token string
 	if cookie, err := r.Cookie(storage.SessionCookie); err == nil {
 		token = cookie.Value
+	}
+	if general {
+		profile, err := s.Store.GetProfile(token)
+		if err != nil {
+			s.writeError(w, err)
+			return
+		}
+		if profile == nil {
+			s.writeError(w, storage.NewWorkspaceError("Войди, чтобы пользоваться чатом.", http.StatusUnauthorized))
+			return
+		}
+		if !ai.IsConfigured() {
+			s.writeError(w, storage.NewWorkspaceError("Модель ИИ пока не подключена.", http.StatusServiceUnavailable))
+			return
+		}
+		hint, err := ai.ReplyToChat(r.Context(), input.Question, input.History, input.Screenshot)
+		if err != nil {
+			message := "Не удалось получить ответ. Попробуй ещё раз."
+			if input.Screenshot != "" {
+				message = "Не удалось получить ответ со скриншотом. Попробуй отправить вопрос текстом."
+			}
+			s.writeError(w, storage.NewWorkspaceError(message, http.StatusBadGateway))
+			return
+		}
+		s.writeJSON(w, http.StatusOK, map[string]string{"hint": hint}, map[string]string{"Cache-Control": "private, no-store"})
+		return
 	}
 	guide, completed, err := s.Store.GuideForStepHint(token, input.GuideID)
 	if err != nil {

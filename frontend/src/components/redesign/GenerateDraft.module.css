@@ -1,10 +1,10 @@
 .status:empty { display: none; }
-.status { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.status { margin-top: 10px; font-size: 0.8125rem; color: var(--muted); }
 .variants { display: grid; gap: 10px; padding: 0; margin: 14px 0 4px; list-style: none; }
 .variant { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--white); overflow-wrap: anywhere; }
-.variant h3 { margin-bottom: 6px; font-size: 16px; }
+.variant h3 { margin-bottom: 6px; font-size: 1rem; }
 .variant p { white-space: pre-wrap; }
-.meta { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.meta { margin-top: 6px; font-size: 0.8125rem; color: var(--muted); }
 .preview { margin-block: 6px 10px; }
 .preview summary { display: list-item; align-content: center; min-height: 44px; cursor: pointer; }
 .preview ol, .preview ul { padding-inline-start: 22px; list-style: revert; }

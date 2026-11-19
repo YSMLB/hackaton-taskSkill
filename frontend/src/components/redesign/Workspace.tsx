@@ -1,8 +1,8 @@
 'use client';
 import Link from 'next/link';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useId, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ArrowLeft, ArrowUpRight, BarChart3, BookOpen, Check, ChevronLeft, ChevronRight, Clock, Copy, ListChecks, MessageCircle, Search, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, BarChart3, BookOpen, Check, ChevronLeft, ChevronRight, Clock, Copy, ListChecks, MessageCircle, MessageSquareText, Search, X } from 'lucide-react';
 import { RegistrationGate, StepBadge, WorkShell } from './Chrome';
 import { defaultRun, Instruction, SAMPLE_ID, useStore } from './store';
 import { Editor } from './Editor';
@@ -10,13 +10,15 @@ import { Analytics } from './Analytics';
 import { Moderation } from './Moderation';
 import { GuideCommunity, RatingLabel } from './GuideCommunity';
 import { StepComments } from './StepComments';
-import { MentorChat, MentorStart } from './MentorChat';
+import { MentorChat } from './MentorChat';
+import mentorStyles from './MentorChat.module.css';
 import { canView, isOwner, publicationLabels, voteSummary } from '@shared/community';
 import { searchScore } from '@shared/search';
 import { GuideCover } from './GuideCover';
 import { StepMedia } from './StepMedia';
 import { GuideUtilities } from './GuideUtilities';
 import { VerifiedBadge } from './ExpertReviews';
+import { useAiEnabled } from '@/lib/ai-preference';
 
 type Screen = 'catalog' | 'library' | 'author' | 'guide' | 'editor' | 'analytics' | 'moderation' | 'mentor';
 export function WorkspacePage({ screen }: { screen: Screen }) {
@@ -27,6 +29,7 @@ export function WorkspacePage({ screen }: { screen: Screen }) {
 }
 function WorkspaceContent({ screen }: { screen: Screen }) {
   const params = useSearchParams();
+  const aiEnabled = useAiEnabled();
   const { data, ready, profile } = useStore();
   const id = params.get('id') || SAMPLE_ID;
   const active = screen === 'moderation' ? 'moderation' : ['author', 'editor', 'analytics', 'moderation'].includes(screen) ? 'author' : screen === 'library' ? 'library' : 'catalog';
@@ -35,16 +38,20 @@ function WorkspaceContent({ screen }: { screen: Screen }) {
   const stepId = params.get('step');
   if (screen === 'mentor') {
     const step = guide?.steps.find(item => item.id === stepId);
+    if (!aiEnabled) return <WorkShell active="mentor"><Empty title="Напарник отключён"
+      text="Ты можешь вернуть функции ИИ в настройках сайта."
+      action={<Link className="button button-dark" href="/profile?tab=settings">Открыть настройки</Link>} /></WorkShell>;
     return <WorkShell active="mentor">{guide?.status === 'published' && step
-      ? <MentorChat key={guide.id + ':' + step.id} guide={guide} step={step} />
-      : <MentorStart guides={data.guides.filter(item => item.status === 'published' && item.steps.length > 0)}
-          unavailable={Boolean(params.get('id') || stepId)} />}</WorkShell>;
+      ? <Player key={guide.id} guide={guide} openMentor />
+      : <>{(params.get('id') || stepId) && <p role="alert" className="field-error">Этот шаг недоступен. Здесь можно задать общий вопрос.</p>}
+        <MentorChat /></>}</WorkShell>;
   }
   return <WorkShell active={active}>{!ready ? <div className="page-loading">Открываем пространство…</div> : screen === 'moderation' ? <Moderation /> : screen === 'editor' ? <Editor key={params.get('id') || params.get('team') || 'new'} id={params.get('id')} teamId={params.get('team')} /> : screen === 'analytics' ? <Analytics guide={guide} /> : screen === 'guide' ? (guide ? <Player key={guide.id} guide={guide} /> : <Empty title="Инструкция не найдена" text="Проверь ссылку или вернись в каталог." />) : <Catalog screen={screen} key={screen} />}</WorkShell>;
 }
 export function Empty({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) { return <div className="empty-state"><BookOpen size={32} /><h2>{title}</h2><p>{text}</p>{action || <Link className="button button-dark" href="/catalog">Перейти в каталог</Link>}</div>; }
 export function Catalog({ screen, embedded = false }: { screen: 'catalog' | 'library' | 'author' | 'forks'; embedded?: boolean }) {
   const { data, profile, catalogSort, setCatalogSort } = useStore();
+  const aiSearchEnabled = useAiEnabled() && screen === 'catalog';
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('Все');
   const base = data.guides.filter(g => (screen === 'author' || screen === 'forks') ? isOwner(g, profile) && (screen !== 'forks' || Boolean(g.source)) : g.status === 'published' && (screen === 'library' ? Boolean(data.runs[g.id]) : !g.teamId));
@@ -56,17 +63,18 @@ export function Catalog({ screen, embedded = false }: { screen: 'catalog' | 'lib
   const requestRef = useRef<AbortController | null>(null);
   const candidates = base.filter(g => category === 'Все' || g.category === category).map(g => ({ id: g.id, title: g.title, description: g.description, category: g.category, steps: g.steps.map(s => s.title) }));
   const catalogKey = JSON.stringify(candidates);
-  const currentAi = aiResult?.query === query && aiResult.catalog === catalogKey ? aiResult : null;
+  const currentAi = aiSearchEnabled && aiResult?.query === query && aiResult.catalog === catalogKey ? aiResult : null;
   useEffect(() => {
+    if (!aiSearchEnabled) return;
     const controller = new AbortController();
     fetch('/api/search', { signal: controller.signal }).then(r => r.json()).then(result => setAiReady(result.configured === true)).catch(() => {});
     return () => controller.abort();
-  }, []);
-  useEffect(() => () => requestRef.current?.abort(), [query, catalogKey]);
+  }, [aiSearchEnabled]);
+  useEffect(() => () => requestRef.current?.abort(), [query, catalogKey, aiSearchEnabled]);
   function changeQuery(value: string) { setQuery(value); setAiMessage(''); }
   function changeCategory(value: string) { setCategory(value); setAiMessage(''); }
   async function aiSearch() {
-    if (screen !== 'catalog' || !query.trim() || busy || !aiReady) return;
+    if (!aiSearchEnabled || !query.trim() || busy || !aiReady) return;
     const controller = new AbortController();
     requestRef.current?.abort(); requestRef.current = controller;
     setBusy(true); setAiMessage('');
@@ -96,21 +104,23 @@ export function Catalog({ screen, embedded = false }: { screen: 'catalog' | 'lib
   const heading = screen === 'author' ? 'Мои инструкции' : screen === 'library' ? 'Мои прохождения' : 'Каталог инструкций';
   return <>{!embedded && <div className="page-heading"><div><h1>{heading}</h1><p>{screen === 'author' ? 'Редактируй черновики и смотри результаты опубликованных инструкций.' : screen === 'library' ? 'Возвращайся к начатому и сохраняй сделанное.' : 'Найди инструкцию по названию, задаче или инструменту.'}</p></div></div>}
     {screen === 'catalog' && continueGuide && <ContinueCard guide={continueGuide} />}
-    <form className="catalog-tools" onSubmit={e => { e.preventDefault(); void aiSearch(); }}><label className="search-field"><Search size={19} /><input maxLength={500} aria-label="Поиск инструкций" placeholder="Название, задача или инструмент" value={query} onChange={e => changeQuery(e.target.value)} />{query && <button type="button" className="icon-button" onClick={() => changeQuery('')} aria-label="Очистить поиск"><X size={17} /></button>}</label>{screen === 'catalog' && <button type="submit" className="button button-dark ai-search-button" disabled={!aiReady || !query.trim() || busy}>{busy ? 'Ищем…' : 'Найти с ИИ'}</button>}</form>
-    {screen === 'catalog' && <div className="search-status" aria-live="polite">{aiMessage || (!aiReady ? 'ИИ-поиск пока не подключён. Работает поиск по словам и синонимам.' : 'Опиши задачу своими словами и нажми «Найти с ИИ».')}{currentAi && <button className="text-button" onClick={() => { setAiResult(null); setAiMessage(''); }}>Искать по словам</button>}</div>}
+    <form className="catalog-tools" onSubmit={e => { e.preventDefault(); void aiSearch(); }}><label className="search-field"><Search size={19} /><input maxLength={500} aria-label="Поиск инструкций" placeholder="Название, задача или инструмент" value={query} onChange={e => changeQuery(e.target.value)} />{query && <button type="button" className="icon-button" onClick={() => changeQuery('')} aria-label="Очистить поиск"><X size={17} /></button>}</label>{aiSearchEnabled && <button type="submit" className="button button-dark ai-search-button" disabled={!aiReady || !query.trim() || busy}>{busy ? 'Ищем…' : 'Найти с ИИ'}</button>}</form>
+    {aiSearchEnabled && <div className="search-status" aria-live="polite">{aiMessage || (!aiReady ? 'ИИ-поиск пока не подключён. Работает поиск по словам и синонимам.' : 'Опиши задачу своими словами и нажми «Найти с ИИ».')}{currentAi && <button className="text-button" onClick={() => { setAiResult(null); setAiMessage(''); }}>Искать по словам</button>}</div>}
     <div className="catalog-filter-row">
       <div className="category-filters">{categories.map(c => <button key={c} className={c === category ? 'active' : ''} aria-pressed={c === category} onClick={() => changeCategory(c)}>{c}</button>)}</div>
-      {screen === 'catalog' && <label className="sort-field flex flex-wrap items-center gap-2 text-sm">
-        Сортировка
-        <select className="enabled:cursor-pointer disabled:cursor-not-allowed" disabled={Boolean(currentAi)}
-          value={currentAi ? 'ai' : catalogSort}
-          onChange={event => setCatalogSort(event.target.value === 'helpful' ? 'helpful' : 'default')}>
-          {currentAi && <option value="ai">По релевантности ИИ</option>}
-          <option value="default">{query.trim() ? 'По релевантности' : 'По умолчанию'}</option>
-          <option value="helpful">По полезности</option>
-        </select>
-      </label>}
-      <span className="muted">Найдено: {filtered.length}</span>
+      <div className="catalog-filter-meta">
+        <span className="muted">Найдено: {filtered.length}</span>
+        {screen === 'catalog' && <label className="sort-field">
+          <span className="sort-label">Сортировка:</span>
+          <select className="sort-select" disabled={Boolean(currentAi)}
+            value={currentAi ? 'ai' : catalogSort}
+            onChange={event => setCatalogSort(event.target.value === 'helpful' ? 'helpful' : 'default')}>
+            {currentAi && <option value="ai">По релевантности ИИ</option>}
+            <option value="default">{query.trim() ? 'По релевантности' : 'По умолчанию'}</option>
+            <option value="helpful">По полезности</option>
+          </select>
+        </label>}
+      </div>
     </div>
     {filtered.length ? <div className="guide-grid">{filtered.map((g, i) => <GuideCard key={g.id} guide={g} index={i} author={screen === 'author' || screen === 'forks'} />)}</div> : <Empty title={query || category !== 'Все' ? 'Ничего не нашлось' : screen === 'forks' ? 'Форков пока нет' : screen === 'author' ? 'Здесь начнётся твоя инструкция' : screen === 'library' ? 'Пока нет начатых инструкций' : 'Пока нет публикаций'} text={query || category !== 'Все' ? 'Попробуй другой запрос или убери фильтры.' : screen === 'forks' ? 'Открой инструкцию в каталоге и создай свою версию.' : screen === 'author' ? 'Разложи знакомую задачу на шаги и помоги кому-то пройти её впервые.' : 'Выбери задачу в каталоге и начни прохождение.'} action={query || category !== 'Все' ? <button className="button button-dark" onClick={() => { changeQuery(''); changeCategory('Все'); }}>Сбросить фильтры</button> : screen === 'author' ? <Link className="button button-dark" href="/editor">Создать первую инструкцию</Link> : undefined} />}
     </>;
@@ -123,8 +133,9 @@ function GuideCard({ guide: g, author }: { guide: Instruction; index: number; au
   const { data } = useStore(); const run = data.runs[g.id];
   return <article className="guide-card">{g.cover && <div className="guide-card-art" aria-hidden="true"><GuideCover cover={g.cover} /></div>}<div className="guide-card-body"><div className="card-labels"><span className="pill">{g.category}</span>{g.source && <span className="pill fork-label">Форк</span>}{author && <span className={`status ${g.status}`}>{publicationLabels[g.status]}</span>}</div><h2><Link className="guide-card-open" href={`/${author ? 'editor' : 'guide'}?id=${g.id}`}>{g.title}</Link></h2><p>{g.description}</p>{g.source && <p className="card-source">Основано на «{g.source.title}»</p>}<div className="guide-card-badges"><RatingLabel id={g.id} /><VerifiedBadge guideId={g.id} /></div><div className="guide-meta"><span><ListChecks size={16} />{g.steps.length} шага</span><span><Clock size={16} />~{g.minutes} мин</span></div>{run && !author && <div className="card-progress"><span>{run.completed.length === g.steps.length ? 'Пройдено' : `Выполнено ${run.completed.length} из ${g.steps.length}`}</span><div className="progress-track"><span style={{ width: `${run.completed.length / g.steps.length * 100}%` }} /></div></div>}<div className="guide-card-footer"><span>{author ? 'Автор: ты' : g.author}</span><span className="round-link" aria-hidden="true"><ArrowUpRight size={19} /></span></div>{author && <Link className="analytics-link" href={`/analytics?id=${g.id}`}><BarChart3 size={16} />Статистика и вопросы</Link>}</div></article>;
 }
-function Player({ guide }: { guide: Instruction }) {
+function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?: boolean }) {
   const params = useSearchParams();
+  const aiEnabled = useAiEnabled();
   const { data, send, pending, notify, profile } = useStore();
   const published = guide.status === 'published';
   const [preview, setPreview] = useState(defaultRun);
@@ -134,10 +145,17 @@ function Player({ guide }: { guide: Instruction }) {
   const [report, setReport] = useState('');
   const [error, setError] = useState('');
   const [finished, setFinished] = useState(false);
+  const [mentorOpen, setMentorOpen] = useState(() => openMentor || params.get('mentor') === '1');
+  const mentorId = useId();
+  const mentorTrigger = useRef<HTMLButtonElement>(null);
   const [pendingCheck, setPendingCheck] = useState<{ stepId: string; index: number; checked: boolean } | null>(null);
   const current = Math.min(run.current, guide.steps.length - 1);
   const step = guide.steps[current];
   const initialVisit = useRef(false);
+  function closeMentor() {
+    setMentorOpen(false);
+    mentorTrigger.current?.focus();
+  }
   useEffect(() => {
     if (!published || !step || initialVisit.current) return;
     initialVisit.current = true;
@@ -188,7 +206,93 @@ function Player({ guide }: { guide: Instruction }) {
   if (!canView(guide, profile)) return <Empty title="Инструкция пока не опубликована" text="Выбери другой материал в каталоге." />;
 
   if (finished) return <div className="completion"><span className="completion-mark"><Check size={36} /></span><span className="section-label">Всё получилось</span><h1>Ещё одно дело завершено.</h1><p>Все шаги «{guide.title}» отмечены. Инструкция останется в твоих прохождениях.</p><div className="hero-actions"><Link className="button button-red" href="/library">Мои прохождения</Link><button className="button button-outline" onClick={() => setFinished(false)}>Посмотреть шаги</button></div><GuideUtilities guide={guide} /><GuideCommunity guide={guide} /></div>;
-  return <><div className="player-heading"><Link className="back-link" href="/catalog"><ArrowLeft size={17} />Каталог</Link><span className="saved-label"><CheckCheckIcon />{published ? 'Прогресс сохраняется в профиле' : 'Предпросмотр'}</span></div><h1 className="player-guide-title">{guide.title}</h1><GuideUtilities guide={guide} /><button className="mobile-step-toggle button button-outline" onClick={() => setOverview(!overview)} aria-expanded={overview}>Шаг {current + 1} из {guide.steps.length}<ListChecks size={18} /></button><div className="player-layout"><aside className={`player-sidebar ${overview ? 'expanded' : ''}`}><span className="section-label">Шаги инструкции</span>{guide.steps.map((s, i) => <button className={`step-nav-item ${i === current ? 'active' : ''}`} key={s.id} aria-current={i === current ? 'step' : undefined} onClick={() => { goTo(i); }}><StepBadge number={i + 1} done={run.completed.includes(s.id)} /><span>{s.title}</span></button>)}<div className="demo-progress"><span>Выполнено {run.completed.length} из {guide.steps.length}</span><div className="progress-track"><span style={{ width: `${run.completed.length / guide.steps.length * 100}%` }} /></div></div></aside><article className="player-step"><div className="step-topline"><span className="pill">Шаг {current + 1}</span><span className="muted">{guide.category}</span></div><h2>{step.title}</h2><p className="step-text">{step.text}</p><StepMedia step={step} />{step.code && <div className="code-panel"><div><span>{step.filename || 'Команда'}</span><button onClick={copy}><Copy size={15} />Копировать</button></div><pre><code>{step.code}</code></pre></div>}<div className="checklist-heading"><h3>Проверь перед следующим шагом</h3><span>{step.checks.filter((_, i) => checkedAt(i)).length} из {step.checks.length}</span></div><div className="checklist">{step.checks.map((text, i) => <label key={`${step.id}-${i}`} className={checkedAt(i) ? 'is-checked' : ''}><input type="checkbox" checked={checkedAt(i)} disabled={pending} onChange={e => void toggleCheck(i, e.target.checked)} /><span>{text}</span></label>)}</div>{published && <Link className="text-button help-trigger mr-4" href={`/mentor?id=${encodeURIComponent(guide.id)}&step=${encodeURIComponent(step.id)}`}>Я застрял на этом шаге</Link>}
-  {published && <button className="text-button help-trigger" aria-expanded={showHelp} onClick={() => setShowHelp(!showHelp)}><MessageCircle size={18} />Не получается?</button>}{showHelp && <form className="help-form" onSubmit={async e => { e.preventDefault(); if (!report.trim() || pending) return; if (await send({ type: 'help', guideId: guide.id, stepId: step.id, text: report })) { setReport(''); setShowHelp(false); notify('Вопрос отправлен автору'); } }}><label htmlFor="step-question">Что именно вызвало затруднение?</label><textarea id="step-question" required maxLength={1500} value={report} onChange={e => setReport(e.target.value)} placeholder="Опиши, на каком действии возникла проблема" /><p className="small-note">Автор увидит вопрос в статистике инструкции.</p><button className="button button-dark" type="submit" disabled={pending}>Отправить вопрос</button></form>}{error && <p className="field-error" role="alert">{error}</p>}<div className="step-actions"><button className="button button-outline" disabled={current === 0 || pending} onClick={() => goTo(current - 1)}><ChevronLeft size={18} />Назад</button><button className="button button-dark" disabled={pending} onClick={advance}>{current === guide.steps.length - 1 ? 'Завершить инструкцию' : 'Шаг выполнен'}<ChevronRight size={18} /></button></div>{guide.status === 'published' && <StepComments key={step.id} guideId={guide.id} stepId={step.id} />}</article></div><GuideCommunity guide={guide} /></>;
+  return <>
+    <div className="player-heading">
+      <Link className="back-link" href="/catalog"><ArrowLeft size={17} />Каталог</Link>
+      <span className="saved-label"><CheckCheckIcon />{published ? 'Прогресс сохраняется в профиле' : 'Предпросмотр'}</span>
+    </div>
+    <h1 className="player-guide-title">{guide.title}</h1>
+    <GuideUtilities guide={guide} />
+    <button className="mobile-step-toggle button button-outline" onClick={() => setOverview(!overview)} aria-expanded={overview}>
+      Шаг {current + 1} из {guide.steps.length}<ListChecks size={18} />
+    </button>
+    <div className={mentorStyles.stage}>
+      <div className={`player-layout ${mentorStyles.playerLayout}`} data-chat-open={published && aiEnabled && mentorOpen}>
+        <aside className={`player-sidebar ${overview ? 'expanded' : ''}`}>
+          <span className="section-label">Шаги инструкции</span>
+          {guide.steps.map((item, index) => <button
+            className={`step-nav-item ${index === current ? 'active' : ''}`}
+            key={item.id}
+            aria-current={index === current ? 'step' : undefined}
+            onClick={() => goTo(index)}
+          >
+            <StepBadge number={index + 1} done={run.completed.includes(item.id)} /><span>{item.title}</span>
+          </button>)}
+          <div className="demo-progress">
+            <span>Выполнено {run.completed.length} из {guide.steps.length}</span>
+            <div className="progress-track"><span style={{ width: `${run.completed.length / guide.steps.length * 100}%` }} /></div>
+          </div>
+        </aside>
+        <article className="player-step">
+          <div className="step-topline"><span className="pill">Шаг {current + 1}</span><span className="muted">{guide.category}</span></div>
+          <h2>{step.title}</h2>
+          <p className="step-text">{step.text}</p>
+          <StepMedia step={step} />
+          {step.code && <div className="code-panel">
+            <div><span>{step.filename || 'Команда'}</span><button onClick={copy}><Copy size={15} />Копировать</button></div>
+            <pre><code>{step.code}</code></pre>
+          </div>}
+          <div className="checklist-heading">
+            <h3>Проверь перед следующим шагом</h3>
+            <span>{step.checks.filter((_, index) => checkedAt(index)).length} из {step.checks.length}</span>
+          </div>
+          <div className="checklist">{step.checks.map((text, index) => <label
+            key={`${step.id}-${index}`}
+            className={checkedAt(index) ? 'is-checked' : ''}
+          >
+            <input type="checkbox" checked={checkedAt(index)} disabled={pending} onChange={event => void toggleCheck(index, event.target.checked)} />
+            <span>{text}</span>
+          </label>)}</div>
+          {published && <div className={mentorStyles.stepHelp}>
+            {aiEnabled && <button ref={mentorTrigger} type="button" className={mentorStyles.trigger}
+              aria-expanded={mentorOpen} aria-controls={mentorId}
+              onClick={() => mentorOpen ? closeMentor() : setMentorOpen(true)}>
+              <MessageSquareText size={18} aria-hidden="true" />Я застрял на этом шаге
+            </button>}
+            <button type="button" className="text-button help-trigger" aria-expanded={showHelp} onClick={() => setShowHelp(!showHelp)}>
+              <MessageCircle size={18} aria-hidden="true" />Спросить автора
+            </button>
+          </div>}
+          {showHelp && <form className="help-form" onSubmit={async event => {
+            event.preventDefault();
+            if (!report.trim() || pending) return;
+            if (await send({ type: 'help', guideId: guide.id, stepId: step.id, text: report })) {
+              setReport('');
+              setShowHelp(false);
+              notify('Вопрос отправлен автору');
+            }
+          }}>
+            <label htmlFor="step-question">Что именно вызвало затруднение?</label>
+            <textarea id="step-question" required maxLength={1500} value={report}
+              onChange={event => setReport(event.target.value)} placeholder="Опиши, на каком действии возникла проблема" />
+            <p className="small-note">Автор увидит вопрос в статистике инструкции.</p>
+            <button className="button button-dark" type="submit" disabled={pending}>Отправить вопрос</button>
+          </form>}
+          {error && <p className="field-error" role="alert">{error}</p>}
+          <div className="step-actions">
+            <button className="button button-outline" disabled={current === 0 || pending} onClick={() => goTo(current - 1)}>
+              <ChevronLeft size={18} />Назад
+            </button>
+            <button className="button button-dark" disabled={pending} onClick={advance}>
+              {current === guide.steps.length - 1 ? 'Завершить инструкцию' : 'Шаг выполнен'}<ChevronRight size={18} />
+            </button>
+          </div>
+          {published && <StepComments key={step.id} guideId={guide.id} stepId={step.id} />}
+        </article>
+        {published && aiEnabled && <MentorChat guide={guide} step={step} open={mentorOpen} id={mentorId} onClose={closeMentor} />}
+      </div>
+    </div>
+    <GuideCommunity guide={guide} />
+  </>;
 }
 function CheckCheckIcon() { return <Check size={16} />; }

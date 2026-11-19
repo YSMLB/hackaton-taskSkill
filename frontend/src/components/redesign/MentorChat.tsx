@@ -1,10 +1,8 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, Paperclip } from 'lucide-react';
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { Check, Paperclip, Plus, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
 import type { Instruction, Step } from '@shared/community';
 import { useStore } from './store';
 import styles from './MentorChat.module.css';
@@ -12,174 +10,189 @@ import styles from './MentorChat.module.css';
 type Screenshot = { name: string; url: string };
 type Turn = { question: string; answer: string; screenshot?: Screenshot };
 
-export function MentorStart({ guides, unavailable }: { guides: Instruction[]; unavailable: boolean }) {
-  const { data } = useStore();
-  const router = useRouter();
-  const [guideId, setGuideId] = useState('');
-  const [stepId, setStepId] = useState('');
-  const recent = guides.filter(guide => data.runs[guide.id])
-    .sort((a, b) => (data.runs[b.id].updatedAt || 0) - (data.runs[a.id].updatedAt || 0))[0];
-  const guide = guides.find(item => item.id === guideId) ?? recent ?? guides[0];
-  const step = guide?.steps.find(item => item.id === stepId)
-    ?? guide?.steps.find(item => item.id === data.runs[guide.id]?.lastStepId)
-    ?? guide?.steps[0];
 
-  return <section className={styles.mentor}>
-    <h1>STEPWISE AI</h1>
-    {unavailable && <p role="alert" className="field-error">Этот шаг недоступен. Выбери другую инструкцию или шаг.</p>}
-    {guide && step ? <form className={styles.start} onSubmit={event => {
-      event.preventDefault();
-      router.push(`/mentor?id=${encodeURIComponent(guide.id)}&step=${encodeURIComponent(step.id)}`);
-    }}>
-      <p>Выбери шаг, с которым нужна помощь.</p>
-      <div className="field">
-        <label htmlFor="mentor-guide">Инструкция</label>
-        <select id="mentor-guide" value={guide.id} onChange={event => {
-          setGuideId(event.target.value);
-          setStepId('');
-        }}>
-          {guides.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="mentor-step">Шаг</label>
-        <select id="mentor-step" value={step.id} onChange={event => setStepId(event.target.value)}>
-          {guide.steps.map((item, index) => <option key={item.id} value={item.id}>{index + 1}. {item.title}</option>)}
-        </select>
-      </div>
-      <button type="submit" className="button button-dark">Открыть чат</button>
-    </form> : <div className={styles.start}>
-      <p>Чат можно открыть из опубликованной инструкции.</p>
-      <Link className="button button-dark" href="/catalog">Открыть каталог</Link>
-    </div>}
-  </section>;
-}
+type Thread = {
+  turns: Turn[];
+  question: string;
+  screenshot?: Screenshot;
+  sending?: string;
+  reading?: boolean;
+  error?: string;
+};
 
-export function MentorChat({ guide, step }: { guide: Instruction; step: Step }) {
+const emptyThread: Thread = { turns: [], question: '' };
+
+type MentorChatProps = { open?: boolean; id?: string } & (
+  | { guide: Instruction; step: Step; onClose: () => void }
+  | { guide?: never; step?: never; onClose?: never }
+);
+
+export function MentorChat({ guide, step, open = true, id, onClose }: MentorChatProps) {
   const { data } = useStore();
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [question, setQuestion] = useState('');
-  const [screenshot, setScreenshot] = useState<Screenshot>();
-  const [pending, setPending] = useState(false);
-  const [reading, setReading] = useState(false);
-  const [error, setError] = useState('');
-  const request = useRef<AbortController | null>(null);
+  const headingId = useId();
+  const messageId = headingId + '-message';
+  const [threads, setThreads] = useState<Record<string, Thread>>({});
+  const requests = useRef(new Map<string, AbortController>());
+  const panel = useRef<HTMLElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const messagesEnd = useRef<HTMLDivElement>(null);
-  const current = guide.steps.findIndex(item => item.id === step.id);
-  const completed = guide.steps.slice(0, current).filter(item => data.runs[guide.id]?.completed.includes(item.id));
+  const messages = useRef<HTMLDivElement>(null);
+  const standalone = !step;
+  const threadKey = step?.id ?? 'chat';
+  const thread = threads[threadKey] ?? emptyThread;
+  const current = guide?.steps.findIndex(item => item.id === step?.id) ?? -1;
+  const completed = guide?.steps.slice(0, current).filter(item => data.runs[guide.id]?.completed.includes(item.id)) ?? [];
 
-  useEffect(() => () => request.current?.abort(), []);
   useEffect(() => {
-    if (turns.length || pending) messagesEnd.current?.scrollIntoView({ block: 'nearest' });
-  }, [turns.length, pending]);
+    const controllers = requests.current;
+    return () => {
+      for (const controller of controllers.values()) controller.abort();
+    };
+  }, []);
+  useEffect(() => {
+    if (!open || standalone) return;
+    panel.current?.focus({ preventScroll: true });
+    panel.current?.scrollIntoView({ block: 'nearest' });
+  }, [open, standalone]);
+  useEffect(() => {
+    const log = messages.current;
+    if (open && log) log.scrollTop = log.scrollHeight;
+  }, [open, threadKey, thread.turns.length, thread.sending]);
 
-  async function attach(event: ChangeEvent<HTMLInputElement>) {
+  function update(stepId: string, patch: Partial<Thread>) {
+    setThreads(previous => ({
+      ...previous,
+      [stepId]: { ...(previous[stepId] ?? emptyThread), ...patch },
+    }));
+  }
+
+  function attach(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
     if (!file) return;
-    setError('');
+    const stepId = threadKey;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || !file.size || file.size > 2 * 1024 * 1024) {
-      setError('Выбери PNG, JPEG или WebP размером до 2 МБ.');
+      update(stepId, { error: 'Выбери PNG, JPEG или WebP размером до 2 МБ.' });
       return;
     }
-    setReading(true);
+    update(stepId, { reading: true, error: '' });
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === 'string') setScreenshot({ name: file.name, url: reader.result });
-      setReading(false);
+      if (typeof reader.result === 'string') {
+        update(stepId, { screenshot: { name: file.name, url: reader.result }, reading: false });
+      } else {
+        update(stepId, { error: 'Не удалось открыть скриншот.', reading: false });
+      }
     };
-    reader.onerror = () => {
-      setError('Не удалось открыть скриншот. Попробуй выбрать файл снова.');
-      setReading(false);
-    };
+    reader.onerror = () => update(stepId, { error: 'Не удалось открыть скриншот.', reading: false });
     reader.readAsDataURL(file);
   }
 
   async function send(message: string) {
-    if (request.current || reading) return;
+    const stepId = threadKey;
+    if (requests.current.has(stepId) || thread.reading) return;
     const controller = new AbortController();
-    request.current = controller;
-    setPending(true);
-    setError('');
+    requests.current.set(stepId, controller);
+    update(stepId, { sending: message, error: '' });
     try {
-      const previousScreenshot = [...turns].reverse().find(turn => turn.screenshot)?.screenshot;
-      const response = await fetch('/api/ai/step-hint', {
+      const previousScreenshot = [...thread.turns].reverse().find(turn => turn.screenshot)?.screenshot;
+      const response = await fetch(step ? '/api/ai/step-hint' : '/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          guideId: guide.id, stepId: step.id, question: message,
-          history: turns.slice(-6).map(({ question, answer }) => ({ question, answer })),
-          screenshot: (screenshot ?? previousScreenshot)?.url,
+          guideId: guide?.id,
+          stepId: step?.id,
+          question: message,
+          history: thread.turns.slice(-6).map(({ question, answer }) => ({ question, answer })),
+          screenshot: (thread.screenshot ?? previousScreenshot)?.url,
         }),
       });
       const result: { hint?: string; message?: string } = await response.json();
       if (!response.ok || !result.hint) throw new Error(result.message || 'Не удалось получить ответ. Попробуй ещё раз.');
       if (controller.signal.aborted) return;
-      const answer = result.hint;
-      setTurns(previous => [...previous, { question: message, answer, screenshot }]);
-      setQuestion('');
-      setScreenshot(undefined);
+      update(stepId, {
+        turns: [...thread.turns, { question: message, answer: result.hint, screenshot: thread.screenshot }],
+        question: '',
+        screenshot: undefined,
+      });
     } catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Не удалось связаться с сервером.');
+      if (!controller.signal.aborted) update(stepId, {
+        error: cause instanceof Error && !(cause instanceof TypeError) && !(cause instanceof SyntaxError)
+          ? cause.message : 'Не удалось связаться с сервером. Попробуй ещё раз.',
+      });
     } finally {
-      request.current = null;
-      setPending(false);
+      requests.current.delete(stepId);
+      if (!controller.signal.aborted) update(stepId, { sending: undefined });
     }
   }
 
-  return <section className={styles.mentor}>
-    <Link href={`/guide?id=${encodeURIComponent(guide.id)}&step=${encodeURIComponent(step.id)}`} className="back-link">
-      <ArrowLeft size={17} aria-hidden="true" />Вернуться к шагу
-    </Link>
-    <h1>STEPWISE AI</h1>
-    <div className={styles.layout}>
-      <aside className={styles.context} aria-label="Контекст инструкции">
-        <p className="muted">{guide.title}</p>
-        <h2>{step.title}</h2>
-        <p className={styles.stepText}>{step.text}</p>
-        {completed.length > 0 && <>
-          <h3>Выполнено до этого шага</h3>
-          <ul>{completed.map(item => <li key={item.id}><Check size={15} aria-hidden="true" />{item.title}</li>)}</ul>
-        </>}
-      </aside>
-      <section className={styles.chat} aria-label="Чат с наставником">
-        <div className={styles.messages} role="log" aria-label="Переписка">
-          {turns.length === 0 && <p className={styles.welcome}>На каком действии ты застрял? Вставь текст ошибки или прикрепи скриншот.</p>}
-          {turns.map((turn, index) => <div className={styles.turn} key={index}>
-            <div className={styles.question}><b>Ты</b><p>{turn.question}</p>
-              {turn.screenshot && <Image unoptimized src={turn.screenshot.url} alt="Приложенный скриншот ошибки" width={280} height={180} />}
-            </div>
-            <div className={styles.answer}><b>STEPWISE AI</b><p>{turn.answer}</p></div>
-          </div>)}
-          {pending && <p className="muted" role="status">Наставник готовит ответ…</p>}
-          <div ref={messagesEnd} />
-        </div>
-        <form className={styles.composer} onSubmit={event => {
-          event.preventDefault();
-          void send(question.trim() || (screenshot ? 'Помоги разобраться со скриншотом.' : 'Объясни текущий шаг.'));
-        }}>
-          {error && <p className="field-error" role="alert">{error}</p>}
-          <label htmlFor="mentor-message">Сообщение</label>
-          <textarea id="mentor-message" maxLength={1500} rows={3} value={question} disabled={pending}
-            onChange={event => setQuestion(event.target.value)} placeholder="Опиши, что сделал и какая ошибка появилась" />
-          <input ref={fileInput} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={attach} />
-          {screenshot && <div className={styles.attachment}>
-            <Image unoptimized src={screenshot.url} alt="Предпросмотр скриншота" width={64} height={48} />
-            <span>{screenshot.name}</span>
-            <button className="text-button" type="button" disabled={pending} onClick={() => setScreenshot(undefined)}>Убрать</button>
-          </div>}
-          <div className={styles.actions}>
-            <button className="button button-outline" type="button" disabled={pending || reading} onClick={() => fileInput.current?.click()}>
-              <Paperclip size={16} aria-hidden="true" />Скриншот
-            </button>
-            <button className="button button-dark" type="submit" disabled={pending || reading}>
-              {question.trim() || screenshot || turns.length ? 'Отправить' : 'Объясни шаг'}
-            </button>
-          </div>
-        </form>
-      </section>
+  const pending = Boolean(thread.sending);
+  const Heading = step ? 'h2' : 'h1';
+  return <section ref={panel} className={step ? styles.chat : `${styles.chat} ${styles.standalone}`} id={id} hidden={!open} tabIndex={-1} aria-labelledby={headingId}
+    onKeyDown={event => {
+      if (event.key === 'Escape' && onClose) { event.stopPropagation(); onClose(); }
+    }}>
+    <div className={styles.chatHeading}>
+      <div><Heading id={headingId}>Напарник</Heading>{step && <p>Шаг {current + 1} из {guide.steps.length} · {step.title}</p>}</div>
+      {onClose ? <button className="icon-button" type="button" aria-label="Закрыть Напарника" onClick={onClose}>
+        <X size={19} aria-hidden="true" />
+      </button> : <button className="button button-outline" type="button" disabled={pending || thread.reading}
+        onClick={() => setThreads({})}><Plus size={17} aria-hidden="true" />Новый чат</button>}
     </div>
+    {completed.length > 0 && <details className={styles.context}>
+      <summary>Выполненные шаги</summary>
+      <ul>{completed.map(item => <li key={item.id}><Check size={15} aria-hidden="true" />{item.title}</li>)}</ul>
+    </details>}
+    <div ref={messages} className={styles.messages} role="log" aria-label="Переписка">
+      {!thread.turns.length && !pending && <div className={styles.welcome}>
+        <p>{step ? 'Спроси про этот шаг или прикрепи скриншот ошибки.' : 'Напиши вопрос или приложи скриншот.'}</p>
+        {step && !thread.question && !thread.screenshot && <div className={styles.suggestions}>
+          <button type="button" onClick={() => void send('Объясни этот шаг простыми словами.')}>Объясни проще</button>
+          <button type="button" onClick={() => void send('Как проверить, что шаг выполнен правильно?')}>Как проверить результат?</button>
+        </div>}
+      </div>}
+      {thread.turns.map((turn, index) => <div className={styles.turn} key={index}>
+        <div className={styles.question}>
+          <b>Ты</b><p>{turn.question}</p>
+          {turn.screenshot && <Image unoptimized src={turn.screenshot.url} alt="Приложенный скриншот ошибки" width={280} height={180} />}
+        </div>
+        <div className={styles.answer}><b>Напарник</b><p>{turn.answer}</p></div>
+      </div>)}
+      {pending && <div className={styles.turn}>
+        <div className={styles.question}><b>Ты</b><p>{thread.sending}</p></div>
+        <p className="muted" role="status">Напарник готовит ответ…</p>
+      </div>}
+    </div>
+    <form className={styles.composer} onSubmit={event => {
+      event.preventDefault();
+      const message = thread.question.trim() || (thread.screenshot ? 'Помоги разобраться со скриншотом.' : '');
+      if (message) void send(message);
+    }}>
+      {thread.error && <p className="field-error" role="alert">{thread.error}</p>}
+      <label htmlFor={messageId}>Сообщение</label>
+      <textarea id={messageId} maxLength={1500} rows={3} value={thread.question} readOnly={pending}
+        onKeyDown={event => {
+          if (step || event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+          event.preventDefault();
+          event.currentTarget.form?.requestSubmit();
+        }}
+        onChange={event => update(threadKey, { question: event.target.value })}
+        placeholder={step ? 'Что не получилось на этом шаге?' : 'Напиши сообщение'} />
+      <input ref={fileInput} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={attach} />
+      {thread.screenshot && <div className={styles.attachment}>
+        <Image unoptimized src={thread.screenshot.url} alt="Предпросмотр скриншота" width={64} height={48} />
+        <span>{thread.screenshot.name}</span>
+        <button className="text-button" type="button" disabled={pending || thread.reading}
+          onClick={() => update(threadKey, { screenshot: undefined })}>Убрать</button>
+      </div>}
+      <div className={styles.actions}>
+        <button className="button button-outline" type="button" disabled={pending || thread.reading} onClick={() => fileInput.current?.click()}>
+          <Paperclip size={16} aria-hidden="true" />Скриншот
+        </button>
+        <button className="button button-dark" type="submit" disabled={pending || thread.reading || (!thread.question.trim() && !thread.screenshot)}>
+          Отправить
+        </button>
+      </div>
+    </form>
   </section>;
 }

@@ -46,9 +46,9 @@
 }
 .shell { --rail-width: var(--sidebar-width); display: grid; min-height: 100dvh; grid-template-columns: calc(var(--rail-width) + 12px) minmax(0, 1fr); }
 .sidebarBrand { display: flex; align-items: center; min-height: 44px; padding-inline: 6px; }
-.createButton { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px; border-radius: 8px; background: var(--action-fill); color: var(--on-action); font-size: 13px; font-weight: 700; text-align: center; }
+.createButton { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px; border-radius: 8px; background: var(--action-fill); color: var(--on-action); font-size: 0.8125rem; font-weight: 700; text-align: center; }
 .createButton:hover { background: var(--action-hover); }
-.appMenuButton { display: none; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--white); color: var(--graphite); }
+.appMenuButton { display: none; place-items: center; width: 2.75rem; height: 2.75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--white); color: var(--graphite); }
 .appMenuButton:hover, .appMenuButton[aria-expanded="true"] { background: var(--accent-soft); }
 .drawerShade { display: none; }
 .sidebar {
@@ -71,15 +71,15 @@
 .sidebar nav { overflow-y: auto; min-height: 0; }
 .sidebarGroup { display: grid; gap: 3px; }
 .sidebarGroup + .sidebarGroup { margin-top: 18px; }
-.groupTitle { padding: 3px 9px 5px; color: var(--muted); font-size: 12px; font-weight: 650; }
+.groupTitle { padding: 3px 9px 5px; color: var(--muted); font-size: 0.75rem; font-weight: 650; }
 .sidebarGroup > a, .sidebarToggle {
   display: flex;
   align-items: center;
   gap: 9px;
   padding: 6px 8px;
   border-radius: 10px;
-  min-height: 44px;
-  font-size: 13px;
+  min-height: 2.75rem;
+  font-size: 0.8125rem;
   font-weight: 650;
 }
 .sidebarGroup > a svg { box-sizing: content-box; padding: 6px; border-radius: 8px; background: var(--surface-soft); color: var(--muted); }
@@ -138,7 +138,7 @@
   .appMenuButton { display: grid; position: sticky; top: 10px; z-index: 30; margin: 10px 0 0 16px; }
   .sidebarToggle, .sidebarResize { display: none; }
   .drawerShade { display: block; position: fixed; z-index: 28; inset: 0; border: 0; background: #0f172a42; }
-  .sidebar { display: none; position: fixed; z-index: 29; top: 64px; left: 10px; width: min(280px, calc(100vw - 20px)); height: auto; max-height: calc(100dvh - 74px); margin: 0; }
+  .sidebar { display: none; position: fixed; z-index: 29; top: 68px; left: 10px; width: min(300px, calc(100vw - 20px)); height: auto; max-height: calc(100dvh - 78px); margin: 0; }
   .sidebar[data-open="true"] { display: flex; }
   .workspaceContent { padding: 16px 16px 45px; }
 }
@@ -151,6 +151,6 @@
   .landingLogin { display: none; }
 }
 @media (max-width: 380px) {
-  .dockBar :global(.brand) { font-size: 20px; }
+  .dockBar :global(.brand) { font-size: 1.25rem; }
   .dockBar :global(.brand-mark) { width: 25px; height: 28px; }
 }

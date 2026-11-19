@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
-import { BookOpen, Camera, FolderOpen, GitFork, LogOut, Settings2, UserRound } from 'lucide-react';
+import { BookOpen, Camera, CreditCard, FolderOpen, GitFork, LogOut, Settings2, UserRound, Users } from 'lucide-react';
 import type { Profile } from '@shared/community';
 import { RegistrationGate, WorkShell } from './Chrome';
 import { ProfileAvatar } from './ProfileAvatar';
@@ -112,7 +112,8 @@ function ProfileForm({ profile }: { profile: Profile }) {
 
         <nav className={styles.tabs} aria-label="Разделы профиля">
           {tabs.map(({ id, title, Icon }) => <Link key={id} href={id === 'details' ? '/profile' : '/profile?tab=' + id} aria-current={tab === id ? 'page' : undefined} scroll={false}><Icon size={17} aria-hidden="true" />{title}</Link>)}
-          <Link href="/team"><Settings2 size={17} aria-hidden="true" />Подписки и команды</Link>
+          <Link href="/team"><Users size={17} aria-hidden="true" />Команды</Link>
+          <Link href="/subscriptions"><CreditCard size={17} aria-hidden="true" />Подписки</Link>
         </nav>
         {previousDrafts.length > 0 && <button className="button button-outline" type="button" disabled={pending} onClick={async () => {
           const result = await send({ type: 'import', guides: previousDrafts.slice(0, 30) });

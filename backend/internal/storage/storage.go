@@ -490,7 +490,7 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 
 	myRuns := make(map[string]models.Run)
 	analytics := make(map[string]models.GuideMetrics)
-	teams := []models.Team{}
+	teams := []models.TeamSummary{}
 	notices := []models.Notice{}
 
 	var actor string
@@ -498,7 +498,13 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 		actor = models.ActorID(*profile)
 		for _, team := range state.Teams {
 			if slices.Contains(team.MemberIDs, actor) {
-				teams = append(teams, team)
+				members := make([]models.TeamMember, 0, len(team.MemberIDs))
+				for _, id := range team.MemberIDs {
+					if member, ok := state.Accounts[id]; ok {
+						members = append(members, models.TeamMember{ID: id, Name: member.Name})
+					}
+				}
+				teams = append(teams, models.TeamSummary{Team: team, Members: members})
 			}
 		}
 		notices = append(notices, state.Notices[actor]...)
