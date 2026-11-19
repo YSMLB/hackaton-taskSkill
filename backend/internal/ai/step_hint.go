@@ -82,12 +82,15 @@ func ExplainStep(ctx context.Context, guide *models.Instruction, step models.Ste
 
 func requestHint(ctx context.Context, prompt string, payload []byte, screenshot string) (string, error) {
 	var content any = string(payload)
+	timeout := 45 * time.Second
 	if screenshot != "" {
+		// Local models may need to initialize their image encoder on the first attachment.
+		timeout = 90 * time.Second
 		content = []map[string]any{
 			{"type": "text", "text": string(payload)},
 			{"type": "image_url", "image_url": map[string]string{"url": screenshot}},
 		}
 	}
-	hint, err := chatCompletion(ctx, prompt, content, 0.3, 45*time.Second)
+	hint, err := chatCompletion(ctx, prompt, content, 0.3, timeout)
 	return compactText(strings.TrimSpace(hint), 3000), err
 }
