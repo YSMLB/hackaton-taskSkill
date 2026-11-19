@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -183,6 +184,14 @@ func (s *Storage) loadState(tx *sql.Tx) (*models.State, error) {
 	}
 	if state.Reviews == nil {
 		state.Reviews = []models.ExpertReview{}
+	}
+	if state.ModerationDecisions == nil {
+		state.ModerationDecisions = []models.ModerationDecision{}
+		for _, guide := range state.Guides {
+			if guide.TeamID == "" && guide.ReviewedAt != "" {
+				state.ModerationDecisions = append(state.ModerationDecisions, moderationDecision("legacy-"+guide.ID, guide))
+			}
+		}
 	}
 
 	return &state, nil
@@ -492,6 +501,7 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 	analytics := make(map[string]models.GuideMetrics)
 	teams := []models.TeamSummary{}
 	notices := []models.Notice{}
+	myQuestions := []models.Report{}
 
 	var actor string
 	if profile != nil {
@@ -508,6 +518,11 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 			}
 		}
 		notices = append(notices, state.Notices[actor]...)
+		for _, report := range state.Reports {
+			if report.AuthorID == actor && publicIDs[report.GuideID] {
+				myQuestions = append(myQuestions, report)
+			}
+		}
 	}
 
 	for _, guide := range viewableGuides {
@@ -559,17 +574,31 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 		}
 	}
 
+	var moderation *models.ModerationData
+	if models.IsAdmin(profile) {
+		moderation = &models.ModerationData{Decisions: state.ModerationDecisions, Experts: []models.ExpertSummary{}}
+		for _, account := range state.Accounts {
+			if account.Role == "Эксперт" {
+				moderation.Experts = append(moderation.Experts, models.ExpertSummary{
+					ID: models.ActorID(account), Name: account.Name, Email: account.Email, Active: models.IsExpert(&account),
+				})
+			}
+		}
+	}
+
 	return models.WorkspaceSnapshot{
 		Profile: profile,
 		Data: models.WorkspaceData{
-			Teams:     teams,
-			Notices:   notices,
-			Guides:    viewableGuides,
-			Runs:      myRuns,
-			Votes:     filteredVotes,
-			Comments:  filteredComments,
-			Reviews:   filteredReviews,
-			Analytics: analytics,
+			MyQuestions: myQuestions,
+			Teams:       teams,
+			Notices:     notices,
+			Guides:      viewableGuides,
+			Runs:        myRuns,
+			Votes:       filteredVotes,
+			Comments:    filteredComments,
+			Reviews:     filteredReviews,
+			Analytics:   analytics,
+			Moderation:  moderation,
 		},
 	}
 }
@@ -899,6 +928,10 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		if cmdType == "moderate" {
 			requireCondition(models.IsAdmin(current), "Решение принимает администратор.", 403)
 			requireCondition(guide.Status == models.StatusPending, "Решение уже принято или инструкция отозвана.", 409)
+			if command["revision"] != nil {
+				revision, ok := command["revision"].(float64)
+				requireCondition(ok && revision == float64(guide.Revision), "Автор обновил инструкцию. Открой новую версию перед проверкой.", 409)
+			}
 
 			decision, _ := command["decision"].(string)
 			requireCondition(decision == "approve" || decision == "reject", "Выбери решение.")
@@ -912,6 +945,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			}
 			guide.ReviewedAt = time.Now().UTC().Format(time.RFC3339)
 			guide.ReviewedBy = current.Name
+			state.ModerationDecisions = append(state.ModerationDecisions, moderationDecision(RandomUUID(), *guide))
 			message := "Инструкцию вернули на доработку"
 			if decision == "approve" {
 				message = "Инструкция опубликована"
@@ -929,7 +963,8 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			requireCondition(index >= 0, "Вопрос не найден.", 404)
 			report := &state.Reports[index]
 			report.Reply = textValidation(command["text"], 2000, true)
-			notify(state, report.AuthorID, actor, "Автор ответил на вопрос: "+report.Reply, "/guide?id="+key)
+			query := url.Values{"id": {key}, "step": {report.StepID}}
+			notify(state, report.AuthorID, actor, "Автор ответил на вопрос: "+report.Reply, "/guide?"+query.Encode()+"#author-questions")
 			break
 		}
 

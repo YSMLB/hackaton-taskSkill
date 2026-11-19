@@ -19,13 +19,14 @@ const (
 )
 
 type Profile struct {
-	Plan   string `json:"plan,omitempty"`
-	ID     string `json:"id,omitempty"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Role   string `json:"role"`
-	Avatar string `json:"avatar,omitempty"`
-	Bio    string `json:"bio,omitempty"`
+	RoleBeforeExpert string `json:"roleBeforeExpert,omitempty"`
+	Plan             string `json:"plan,omitempty"`
+	ID               string `json:"id,omitempty"`
+	Name             string `json:"name"`
+	Email            string `json:"email"`
+	Role             string `json:"role"`
+	Avatar           string `json:"avatar,omitempty"`
+	Bio              string `json:"bio,omitempty"`
 }
 
 type Step struct {
@@ -129,14 +130,16 @@ type GuideMetrics struct {
 }
 
 type WorkspaceData struct {
-	Teams     []TeamSummary              `json:"teams"`
-	Notices   []Notice                   `json:"notices"`
-	Guides    []Instruction              `json:"guides"`
-	Runs      map[string]Run             `json:"runs"`
-	Votes     map[string]map[string]Vote `json:"votes"`
-	Comments  []StepComment              `json:"comments"`
-	Reviews   []ExpertReview             `json:"reviews"`
-	Analytics map[string]GuideMetrics    `json:"analytics"`
+	MyQuestions []Report                   `json:"myQuestions"`
+	Moderation  *ModerationData            `json:"moderation,omitempty"`
+	Teams       []TeamSummary              `json:"teams"`
+	Notices     []Notice                   `json:"notices"`
+	Guides      []Instruction              `json:"guides"`
+	Runs        map[string]Run             `json:"runs"`
+	Votes       map[string]map[string]Vote `json:"votes"`
+	Comments    []StepComment              `json:"comments"`
+	Reviews     []ExpertReview             `json:"reviews"`
+	Analytics   map[string]GuideMetrics    `json:"analytics"`
 }
 
 type WorkspaceSnapshot struct {
@@ -152,16 +155,39 @@ type CommandResult struct {
 }
 
 type State struct {
-	Teams    []Team                       `json:"teams"`
-	Notices  map[string][]Notice          `json:"notices"`
-	Accounts map[string]Profile           `json:"accounts"`
-	Guides   []Instruction                `json:"guides"`
-	Runs     map[string]map[string]Run    `json:"runs"`
-	Votes    map[string]map[string]Vote   `json:"votes"`
-	Comments []StepComment                `json:"comments"`
-	Reports  []Report                     `json:"reports"`
-	Reviews  []ExpertReview               `json:"reviews"`
-	Imports  map[string]map[string]string `json:"imports"`
+	ModerationDecisions []ModerationDecision         `json:"moderationDecisions"`
+	Teams               []Team                       `json:"teams"`
+	Notices             map[string][]Notice          `json:"notices"`
+	Accounts            map[string]Profile           `json:"accounts"`
+	Guides              []Instruction                `json:"guides"`
+	Runs                map[string]map[string]Run    `json:"runs"`
+	Votes               map[string]map[string]Vote   `json:"votes"`
+	Comments            []StepComment                `json:"comments"`
+	Reports             []Report                     `json:"reports"`
+	Reviews             []ExpertReview               `json:"reviews"`
+	Imports             map[string]map[string]string `json:"imports"`
+}
+
+type ModerationData struct {
+	Decisions []ModerationDecision `json:"decisions"`
+	Experts   []ExpertSummary      `json:"experts"`
+}
+
+type ModerationDecision struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Author    string `json:"author"`
+	Reviewer  string `json:"reviewer"`
+	Approved  bool   `json:"approved"`
+	Note      string `json:"note"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type ExpertSummary struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
+	Active bool   `json:"active"`
 }
 
 func ActorID(p Profile) string {

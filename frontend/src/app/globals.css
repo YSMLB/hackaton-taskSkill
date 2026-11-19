@@ -264,6 +264,11 @@ body:has(.account-dialog[open]){overflow:hidden}
 .field input, .field select, .search-field { min-height: 2.75rem; }
 .field textarea { padding: 0.7rem; }
 .editor-actions .button { white-space: normal; }
+.author-guide-filters.category-filters {
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin-block-end: 16px;
+}
 
 @media (max-width: 420px) {
   .player-heading { flex-wrap: wrap; }

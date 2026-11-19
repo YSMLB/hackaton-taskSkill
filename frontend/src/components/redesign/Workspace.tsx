@@ -46,14 +46,28 @@ function WorkspaceContent({ screen }: { screen: Screen }) {
       : <>{(params.get('id') || stepId) && <p role="alert" className="field-error">Этот шаг недоступен. Здесь можно задать общий вопрос.</p>}
         <MentorChat /></>}</WorkShell>;
   }
-  return <WorkShell active={active}>{!ready ? <div className="page-loading">Открываем пространство…</div> : screen === 'moderation' ? <Moderation /> : screen === 'editor' ? <Editor key={params.get('id') || params.get('team') || 'new'} id={params.get('id')} teamId={params.get('team')} /> : screen === 'analytics' ? <Analytics guide={guide} /> : screen === 'guide' ? (guide ? <Player key={guide.id} guide={guide} /> : <Empty title="Инструкция не найдена" text="Проверь ссылку или вернись в каталог." />) : <Catalog screen={screen} key={screen} />}</WorkShell>;
+  return <WorkShell active={active}>{!ready ? <div className="page-loading">Открываем пространство…</div> : screen === 'moderation' ? <Moderation /> : screen === 'editor' ? <Editor key={params.get('id') || params.get('team') || 'new'} id={params.get('id')} teamId={params.get('team')} /> : screen === 'analytics' ? <Analytics guide={guide} /> : screen === 'guide' ? (guide ? <Player key={`${guide.id}:${stepId ?? ""}`} guide={guide} /> : <Empty title="Инструкция не найдена" text="Проверь ссылку или вернись в каталог." />) : <Catalog screen={screen} key={screen} />}</WorkShell>;
 }
 export function Empty({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) { return <div className="empty-state"><BookOpen size={32} /><h2>{title}</h2><p>{text}</p>{action || <Link className="button button-dark" href="/catalog">Перейти в каталог</Link>}</div>; }
-export function Catalog({ screen, embedded = false }: { screen: 'catalog' | 'library' | 'author' | 'forks'; embedded?: boolean }) {
+const authorFilters = [
+  { id: 'all', label: 'Все' },
+  { id: 'draft', label: 'Черновики' },
+  { id: 'pending', label: 'На проверке' },
+  { id: 'published', label: 'Опубликованные' },
+  { id: 'rejected', label: 'Нужны правки' },
+  { id: 'forks', label: 'Форки' },
+] as const;
+
+export function Catalog({ screen, embedded = false, initialAuthorFilter = 'all' }: {
+  screen: 'catalog' | 'library' | 'author' | 'forks';
+  embedded?: boolean;
+  initialAuthorFilter?: 'all' | 'forks';
+}) {
   const { data, profile, catalogSort, setCatalogSort } = useStore();
   const aiSearchEnabled = useAiEnabled() && screen === 'catalog';
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('Все');
+  const [authorFilter, setAuthorFilter] = useState<(typeof authorFilters)[number]['id']>(initialAuthorFilter);
   const base = data.guides.filter(g => (screen === 'author' || screen === 'forks') ? isOwner(g, profile) && (screen !== 'forks' || Boolean(g.source)) : g.status === 'published' && (screen === 'library' ? Boolean(data.runs[g.id]) : !g.teamId));
   const categories = ['Все', ...new Set(base.map(g => g.category))];
   const [aiReady, setAiReady] = useState(false);
@@ -90,6 +104,9 @@ export function Catalog({ screen, embedded = false }: { screen: 'catalog' | 'lib
     } finally { if (requestRef.current === controller) setBusy(false); }
   }
   let filtered = base.filter(g => candidates.some(c => c.id === g.id)).filter(g => currentAi ? currentAi.ids.includes(g.id) : searchScore({ ...g, steps: g.steps.map(s => s.title) }, query) > 0);
+  if (screen === 'author' && authorFilter !== 'all') {
+    filtered = filtered.filter(guide => authorFilter === 'forks' ? Boolean(guide.source) : guide.status === authorFilter);
+  }
   if (currentAi) filtered.sort((a, b) => currentAi.ids.indexOf(a.id) - currentAi.ids.indexOf(b.id));
   else if (screen === 'catalog' && catalogSort === 'helpful') {
     const rated = filtered.map(guide => ({ guide, rating: voteSummary(data.votes[guide.id]) }));
@@ -104,6 +121,10 @@ export function Catalog({ screen, embedded = false }: { screen: 'catalog' | 'lib
   const heading = screen === 'author' ? 'Мои инструкции' : screen === 'library' ? 'Мои прохождения' : 'Каталог инструкций';
   return <>{!embedded && <div className="page-heading"><div><h1>{heading}</h1><p>{screen === 'author' ? 'Редактируй черновики и смотри результаты опубликованных инструкций.' : screen === 'library' ? 'Возвращайся к начатому и сохраняй сделанное.' : 'Найди инструкцию по названию, задаче или инструменту.'}</p></div></div>}
     {screen === 'catalog' && continueGuide && <ContinueCard guide={continueGuide} />}
+    {screen === 'author' && <div className="category-filters author-guide-filters" role="group" aria-label="Тип моих инструкций">
+      {authorFilters.map(filter => <button key={filter.id} type="button" className={authorFilter === filter.id ? 'active' : ''}
+        aria-pressed={authorFilter === filter.id} onClick={() => setAuthorFilter(filter.id)}>{filter.label}</button>)}
+    </div>}
     <form className="catalog-tools" onSubmit={e => { e.preventDefault(); void aiSearch(); }}><label className="search-field"><Search size={19} /><input maxLength={500} aria-label="Поиск инструкций" placeholder="Название, задача или инструмент" value={query} onChange={e => changeQuery(e.target.value)} />{query && <button type="button" className="icon-button" onClick={() => changeQuery('')} aria-label="Очистить поиск"><X size={17} /></button>}</label>{aiSearchEnabled && <button type="submit" className="button button-dark ai-search-button" disabled={!aiReady || !query.trim() || busy}>{busy ? 'Ищем…' : 'Найти с ИИ'}</button>}</form>
     {aiSearchEnabled && <div className="search-status" aria-live="polite">{aiMessage || (!aiReady ? 'ИИ-поиск пока не подключён. Работает поиск по словам и синонимам.' : 'Опиши задачу своими словами и нажми «Найти с ИИ».')}{currentAi && <button className="text-button" onClick={() => { setAiResult(null); setAiMessage(''); }}>Искать по словам</button>}</div>}
     <div className="catalog-filter-row">
@@ -122,7 +143,7 @@ export function Catalog({ screen, embedded = false }: { screen: 'catalog' | 'lib
         </label>}
       </div>
     </div>
-    {filtered.length ? <div className="guide-grid">{filtered.map((g, i) => <GuideCard key={g.id} guide={g} index={i} author={screen === 'author' || screen === 'forks'} />)}</div> : <Empty title={query || category !== 'Все' ? 'Ничего не нашлось' : screen === 'forks' ? 'Форков пока нет' : screen === 'author' ? 'Здесь начнётся твоя инструкция' : screen === 'library' ? 'Пока нет начатых инструкций' : 'Пока нет публикаций'} text={query || category !== 'Все' ? 'Попробуй другой запрос или убери фильтры.' : screen === 'forks' ? 'Открой инструкцию в каталоге и создай свою версию.' : screen === 'author' ? 'Разложи знакомую задачу на шаги и помоги кому-то пройти её впервые.' : 'Выбери задачу в каталоге и начни прохождение.'} action={query || category !== 'Все' ? <button className="button button-dark" onClick={() => { changeQuery(''); changeCategory('Все'); }}>Сбросить фильтры</button> : screen === 'author' ? <Link className="button button-dark" href="/editor">Создать первую инструкцию</Link> : undefined} />}
+    {filtered.length ? <div className="guide-grid">{filtered.map((g, i) => <GuideCard key={g.id} guide={g} index={i} author={screen === 'author' || screen === 'forks'} />)}</div> : screen === 'author' && authorFilter !== 'all' ? <Empty title="В этой подборке пока пусто" text="Посмотри все свои инструкции или измени запрос." action={<button className="button button-outline" onClick={() => { setAuthorFilter('all'); changeQuery(''); changeCategory('Все'); }}>Показать все</button>} /> : <Empty title={query || category !== 'Все' ? 'Ничего не нашлось' : screen === 'forks' ? 'Форков пока нет' : screen === 'author' ? 'Здесь начнётся твоя инструкция' : screen === 'library' ? 'Пока нет начатых инструкций' : 'Пока нет публикаций'} text={query || category !== 'Все' ? 'Попробуй другой запрос или убери фильтры.' : screen === 'forks' ? 'Открой инструкцию в каталоге и создай свою версию.' : screen === 'author' ? 'Разложи знакомую задачу на шаги и помоги кому-то пройти её впервые.' : 'Выбери задачу в каталоге и начни прохождение.'} action={query || category !== 'Все' ? <button className="button button-dark" onClick={() => { changeQuery(''); changeCategory('Все'); }}>Сбросить фильтры</button> : screen === 'author' ? <Link className="button button-dark" href="/editor">Создать первую инструкцию</Link> : undefined} />}
     </>;
 }
 function ContinueCard({ guide }: { guide: Instruction }) {
@@ -151,6 +172,15 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
   const [pendingCheck, setPendingCheck] = useState<{ stepId: string; index: number; checked: boolean } | null>(null);
   const current = Math.min(run.current, guide.steps.length - 1);
   const step = guide.steps[current];
+  const questions = (data.myQuestions ?? []).filter(question => question.guideId === guide.id && question.stepId === step?.id);
+  const hasQuestions = questions.length > 0;
+  const linkedStep = params.get('step');
+  const currentStepId = step?.id;
+  useEffect(() => {
+    if (hasQuestions && currentStepId === linkedStep && location.hash === '#author-questions') {
+      document.getElementById('author-questions')?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [hasQuestions, currentStepId, linkedStep]);
   const initialVisit = useRef(false);
   function closeMentor() {
     setMentorOpen(false);
@@ -278,6 +308,16 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
             <p className="small-note">Автор увидит вопрос в статистике инструкции.</p>
             <button className="button button-dark" type="submit" disabled={pending}>Отправить вопрос</button>
           </form>}
+          {published && questions.length > 0 && <section id="author-questions" className="help-form" aria-label="Твои вопросы автору">
+            <h3>Твои вопросы автору</h3>
+            <ul className="mt-3 space-y-4">{questions.map(question => <li key={question.id}>
+              <p className="whitespace-pre-wrap wrap-anywhere">{question.text}</p>
+              {question.reply ? <div className="mt-1 border-l-2 border-[var(--accent-border)] pl-3">
+                <strong>Ответ автора</strong>
+                <p className="whitespace-pre-wrap wrap-anywhere">{question.reply}</p>
+              </div> : <p className="muted">Ответа пока нет</p>}
+            </li>)}</ul>
+          </section>}
           {error && <p className="field-error" role="alert">{error}</p>}
           <div className="step-actions">
             <button className="button button-outline" disabled={current === 0 || pending} onClick={() => goTo(current - 1)}>

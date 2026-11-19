@@ -64,7 +64,7 @@ export function NotificationCenter() {
   </section>;
 }
 
-export function NotificationMenu({ collapsed, onNavigate }: { collapsed: boolean; onNavigate: () => void }) {
+export function NotificationMenu({ collapsed, current, onNavigate }: { collapsed: boolean; current: boolean; onNavigate: () => void }) {
   const { data, send, pending } = useStore();
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
@@ -98,7 +98,7 @@ export function NotificationMenu({ collapsed, onNavigate }: { collapsed: boolean
   function close() { panel.current?.hidePopover(); }
 
   return <div className={styles.anchor} data-collapsed={collapsed}>
-    <button ref={trigger} type="button" className={styles.trigger} popoverTarget={id}
+    <button ref={trigger} type="button" className={styles.trigger} popoverTarget={id} aria-current={current ? 'page' : undefined}
       aria-label={`Уведомления, непрочитанных: ${unread}`} title={collapsed ? 'Уведомления' : undefined} aria-haspopup="dialog">
       <Bell size={19} aria-hidden="true" />
       <span className={styles.label}>Уведомления</span>

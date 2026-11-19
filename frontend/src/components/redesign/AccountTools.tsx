@@ -14,7 +14,7 @@ export function AccountTools({ screen }: { screen: 'team' | 'notices' | 'subscri
   const { profile, ready } = useStore();
   if (!ready) return <div className="page-loading">Открываем пространство…</div>;
   if (!profile) return <RegistrationGate continueTo={screen === 'subscriptions' ? '/subscriptions' : '/catalog'} />;
-  return <WorkShell active={screen === 'notices' ? 'profile' : screen}>
+  return <WorkShell active={screen}>
     {screen === 'notices' ? <NotificationCenter /> : screen === 'subscriptions' ? <Subscriptions /> : <Teams />}
   </WorkShell>;
 }

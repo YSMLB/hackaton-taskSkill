@@ -11,7 +11,7 @@ import { isAdmin } from '@shared/community';
 import styles from './Chrome.module.css';
 import { NotificationMenu } from './NotificationMenu';
 
-type AppSection = 'catalog' | 'library' | 'author' | 'moderation' | 'profile' | 'team' | 'mentor' | 'subscriptions';
+type AppSection = 'catalog' | 'library' | 'author' | 'moderation' | 'profile' | 'team' | 'mentor' | 'subscriptions' | 'notices';
 
 export function Logo({ href = '/', onClick }: { href?: string; onClick?: () => void }) {
   return <Link className="brand" href={href} onClick={onClick} aria-label={href === '/catalog' ? 'StepFlow, каталог инструкций' : 'StepFlow, главная'}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className={styles.brandName}>StepFlow<span className="logo-dot">.</span></span></Link>;
@@ -146,7 +146,7 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
   ];
   if (isAdmin(profile)) {
     groups.push({ label: 'Модерация', links: [
-      { href: '/moderation', label: 'На проверке', current: active === 'moderation', Icon: ShieldCheck },
+      { href: '/moderation', label: 'Админ-панель', current: active === 'moderation', Icon: ShieldCheck },
     ] });
   }
 
@@ -209,7 +209,7 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
             const NavLink = href === '/offline' ? 'a' : Link;
             return <NavLink key={href} href={href} title={collapsed ? label : undefined} aria-current={current ? 'page' : undefined} onClick={() => setMenu(false)}><Icon size={18} aria-hidden="true" /><span>{label}</span></NavLink>;
           })}
-          {group.label === 'Аккаунт' && <NotificationMenu collapsed={collapsed} onNavigate={() => setMenu(false)} />}
+          {group.label === 'Аккаунт' && <NotificationMenu collapsed={collapsed} current={active === 'notices'} onNavigate={() => setMenu(false)} />}
         </div>)}
       </nav>
         <button type="button" className={styles.sidebarToggle} onClick={() => saveSidebarPreference(sidebarCollapseKey, !collapsed)} aria-expanded={!collapsed} aria-controls={navigationId} aria-label={collapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'} title={collapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'}>

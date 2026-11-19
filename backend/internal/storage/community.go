@@ -8,6 +8,13 @@ import (
 	"stepflow/backend/internal/models"
 )
 
+func moderationDecision(id string, guide models.Instruction) models.ModerationDecision {
+	return models.ModerationDecision{
+		ID: id, Title: guide.Title, Author: guide.Author, Reviewer: guide.ReviewedBy,
+		Approved: guide.Status == models.StatusPublished, Note: guide.ModerationNote, CreatedAt: guide.ReviewedAt,
+	}
+}
+
 func memberTeam(state *models.State, id, actor string) *models.Team {
 	for i := range state.Teams {
 		team := &state.Teams[i]
@@ -70,10 +77,17 @@ func changeAccount(state *models.State, profile *models.Profile, kind string, co
 		msg := "Роль эксперта отозвана"
 		if enabled {
 			requireCondition(target.Plan == "standard" || target.Plan == "business", "Для назначения нужна подписка.", 409)
+			requireCondition(target.Role != "Эксперт", "Пользователь уже назначен экспертом.", 409)
+			target.RoleBeforeExpert = target.Role
 			target.Role = "Эксперт"
 			msg = "Тебя назначили экспертом"
-		} else if target.Role == "Эксперт" {
-			target.Role = "Автор"
+		} else {
+			requireCondition(target.Role == "Эксперт", "У пользователя нет роли эксперта.", 409)
+			target.Role = target.RoleBeforeExpert
+			if target.Role != "Автор" && target.Role != "Ученик" {
+				target.Role = "Автор"
+			}
+			target.RoleBeforeExpert = ""
 		}
 		id := models.ActorID(*target)
 		state.Accounts[id] = *target

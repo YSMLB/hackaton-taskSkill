@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
-import { BookOpen, Camera, CreditCard, FolderOpen, GitFork, LogOut, Settings2, UserRound, Users } from 'lucide-react';
+import { BookOpen, Camera, CreditCard, FolderOpen, LogOut, Settings2, UserRound, Users } from 'lucide-react';
 import type { Profile } from '@shared/community';
 import { RegistrationGate, WorkShell } from './Chrome';
 import { ProfileAvatar } from './ProfileAvatar';
@@ -41,12 +41,12 @@ export function ProfilePage() {
 function ProfileForm({ profile }: { profile: Profile }) {
   const { send, pending, notify } = useStore();
   const requested = useSearchParams().get('tab');
-  const tab = requested === 'library' || requested === 'author' || requested === 'forks' || requested === 'settings' ? requested : 'details';
+  const tab = requested === 'forks' ? 'author' : requested === 'library' || requested === 'author' || requested === 'settings' ? requested : 'details';
+  const initialAuthorFilter = requested === 'forks' ? 'forks' : 'all';
   const tabs = [
     { id: 'details', title: 'Личные данные', Icon: UserRound },
     { id: 'library', title: 'Мои прохождения', Icon: BookOpen },
     { id: 'author', title: 'Мои инструкции', Icon: FolderOpen },
-    { id: 'forks', title: 'Форки', Icon: GitFork },
     { id: 'settings', title: 'Настройки сайта', Icon: Settings2 },
   ];
   const previousDrafts = localDrafts(profile.email);
@@ -122,7 +122,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         <button type="button" className={styles.logout} disabled={pending} onClick={async () => { if (await send({ type: 'logout' })) router.push('/'); }}><LogOut size={18} aria-hidden="true" />Выйти из аккаунта</button>
       </aside>
       <section className={styles.content}>
-        {tab === 'settings' ? <SiteSettings /> : tab !== 'details' ? <Catalog key={tab} screen={tab} embedded /> : <form className={styles.panel} onSubmit={save} onChange={() => { setError(''); setStatus(''); }}>
+        {tab === 'settings' ? <SiteSettings /> : tab !== 'details' ? <Catalog key={`${tab}:${initialAuthorFilter}`} screen={tab} initialAuthorFilter={initialAuthorFilter} embedded /> : <form className={styles.panel} onSubmit={save} onChange={() => { setError(''); setStatus(''); }}>
         <h2>Личные данные</h2>
         <div className={styles.photoRow}>
           <ProfileAvatar photo={avatar} name={name} size={80} />
