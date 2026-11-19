@@ -2,18 +2,122 @@
 
 Платформа пошаговых инструкций для кейса TASKILLS. Интерфейс работает на Next.js, API — на Go. Профили, сессии, инструкции и прохождения хранятся в SQLite.
 
-## Запуск
+## Запуск фронта и бэкенда
 
-Для локального запуска нужны Node.js 24+ и Go 1.26+. Из папки проекта:
+### Локально на Windows
+
+Установите Node.js 24+ и Go 1.26+. Выполните команды в корне репозитория в PowerShell.
 
 ```powershell
-npm ci
-npm run dev -- --port 3050
+npm.cmd ci
+npm.cmd run dev -- --port 3050
 ```
 
-Откройте `http://localhost:3050`. Для проверки сборки используйте `npm run build`, затем `npm run start -- --port 3050`. Команды `dev` и `start` поднимают Go API и Next.js вместе. По умолчанию API слушает порт 8080. Для подключения к уже запущенному API задайте `STEPFLOW_BACKEND_URL`. Вариант с контейнером запускается командой `docker compose up --build` на порту 3000. Compose поднимает два сервиса. Том `workspace-data` с базой подключён к Go. При обновлении запускайте Compose с прежним именем проекта, чтобы использовать существующий том.
+Откройте [localhost:3050](http://localhost:3050). Команда запускает Next.js и Go API вместе. Фронт принимает запросы браузера и передаёт их Go на порт 8080. Порт Go можно изменить через `BACKEND_PORT`. Если Go уже запущен отдельно, задайте `STEPFLOW_BACKEND_URL` с его адресом перед запуском фронта.
 
-База создаётся при запуске Go в `.stepflow/stepflow.sqlite`. Другой путь можно задать через `STEPFLOW_DB_PATH`. Для переноса базы остановите сервер и скопируйте каталог базы. Файл базы и секреты хранятся отдельно от исходников.
+Для запуска собранной версии остановите dev-сервер, затем выполните команды в корне проекта.
+
+```powershell
+npm.cmd run build
+npm.cmd run start -- --port 3050
+```
+
+Локальная SQLite-база создаётся в `.stepflow/stepflow.sqlite`. Другой путь можно задать через `STEPFLOW_DB_PATH`. Перед копированием базы остановите сервер и скопируйте каталог базы целиком.
+
+### В Docker Compose
+
+Запустите Docker Desktop и выполните команды в корне проекта.
+
+```powershell
+docker compose up -d --build --wait
+docker compose ps
+```
+
+Откройте [localhost:3000](http://localhost:3000). Compose поднимает Next.js в сервисе `stepflow` и Go в сервисе `backend`. Порт Go 8080 доступен фронту внутри сети Compose. База хранится в томе `workspace-data`. При обновлении используйте прежнее имя проекта Compose, чтобы подключить существующий том. Для остановки выполните `docker compose down`.
+
+## Локальный ИИ через Ollama
+
+### Ollama и StepFlow на одном компьютере
+
+1. Установите [Ollama для Windows](https://docs.ollama.com/windows) и запустите приложение. Сервер работает в фоне на `127.0.0.1:11434`.
+2. Скачайте [Qwen 2.5 3B](https://ollama.com/library/qwen2.5:3b) (около 1,9 ГБ) и проверьте, что модель появилась в списке.
+
+   ```powershell
+   ollama pull qwen2.5:3b
+   ollama list
+   ```
+
+3. Создайте `frontend/.env.local` или добавьте эти строки в существующий файл.
+
+   ```dotenv
+   AI_BASE_URL=http://127.0.0.1:11434/v1
+   AI_MODEL=qwen2.5:3b
+   AI_API_KEY=ollama
+   ```
+
+4. Запустите или перезапустите StepFlow через `npm.cmd run dev -- --port 3050`. Go добавляет `/chat/completions` к базовому URL. Значение `ollama` заполняет обязательную переменную приложения. Локальная Ollama [игнорирует этот ключ](https://docs.ollama.com/api/openai-compatibility#local-server-usage).
+
+### Ollama внутри Docker Compose
+
+Сохраните фрагмент в `compose.ollama.yml` рядом с `docker-compose.yml`. Ollama использует [сетевое пространство Go-контейнера](https://docs.docker.com/reference/compose-file/services/#network_mode), поэтому её API доступен Go по loopback. Модели сохраняются в отдельном томе `ollama-models`.
+
+```yaml
+services:
+  backend:
+    environment:
+      AI_BASE_URL: http://127.0.0.1:11434/v1
+      AI_MODEL: qwen2.5:3b
+      AI_API_KEY: ollama
+  ollama:
+    image: ollama/ollama
+    network_mode: "service:backend"
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 127.0.0.1:11434
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  ollama-models:
+```
+
+Поднимите контейнеры и скачайте модель внутрь Ollama.
+
+```powershell
+docker compose -f docker-compose.yml -f compose.ollama.yml up -d --build --wait
+docker compose -f docker-compose.yml -f compose.ollama.yml exec ollama ollama pull qwen2.5:3b
+docker compose -f docker-compose.yml -f compose.ollama.yml exec ollama ollama run qwen2.5:3b "Reply in one word: OK."
+```
+
+Откройте [localhost:3000](http://localhost:3000). При запуске, просмотре логов и остановке этого варианта указывайте оба Compose-файла. Конфигурация выше использует CPU. Для ускорения смотрите [официальные варианты Docker с GPU](https://docs.ollama.com/docker).
+
+На отдельном компьютере можно использовать OpenAI-совместимый API по HTTPS. Передайте `AI_BASE_URL`, `AI_MODEL` и `AI_API_KEY` через `frontend/.env.local` при локальном запуске или через корневой `.env` в Compose. Go принимает HTTP для `localhost`, `127.0.0.1` и `::1`. Для сетевого адреса, в том числе `host.docker.internal`, требуется HTTPS.
+
+## Проверка ИИ
+
+1. Если Ollama запущена на Windows, проверьте Chat Completions напрямую. Команда должна вывести ответ модели.
+
+   ```powershell
+   $body = @{
+     model = 'qwen2.5:3b'
+     messages = @(@{ role = 'user'; content = 'Reply in one word: OK.' })
+     max_tokens = 16
+     stream = $false
+   } | ConvertTo-Json -Depth 4
+   $reply = Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:11434/v1/chat/completions' -Headers @{ Authorization = 'Bearer ollama' } -ContentType 'application/json' -Body $body
+   $reply.choices[0].message.content
+   ```
+
+2. Проверьте подключение StepFlow. Для Docker используйте порт 3000. Ответ `configured: True` означает, что Go получил все три переменные. Доступность модели проверяется запросом генерации или поиска.
+
+   ```powershell
+   Invoke-RestMethod 'http://localhost:3050/api/search'
+   ```
+
+3. Откройте каталог, введите «Как запустить проект в контейнерах» и нажмите **Найти с ИИ**. В результатах проверьте инструкцию про Docker Compose. Результаты зависят от опубликованных инструкций и ответа модели.
+4. Войдите как **Автор**, откройте новый черновик и введите тему «Как подготовить отчёт по лабораторной». Нажмите **Создать черновик с ИИ**. Проверьте, что редактор заполнил шаги и чек-листы. Измените шаг, сохраните черновик и откройте его снова.
+
+Если статус `configured` равен `False`, проверьте файл настроек и перезапустите Go вместе со StepFlow. Если запрос возвращает `502`, сначала проверьте прямой ответ модели и совпадение тега с `AI_MODEL`. Поиск ждёт до 15 секунд, генерация — до 45. Перед демонстрацией прогрейте модель коротким запросом. При таймаутах на CPU попробуйте меньшую модель, например [qwen2.5:1.5b](https://ollama.com/library/qwen2.5:1.5b), и обновите тег в настройках. Ручной редактор и поиск по словам работают и при выключенной Ollama.
 
 ## Сценарий для показа
 
@@ -28,10 +132,6 @@ npm run dev -- --port 3050
 Вход в режиме стенда работает по email без пароля. Сеанс и проверка ролей для действий выполняются на сервере. Роли на стенде выбираются при регистрации. Для публичной эксплуатации потребуется вход с подтверждением и отдельная выдача повышенных ролей.
 
 В старом браузере на том же адресе можно открыть профиль под прежним email и нажать «Перенести старые инструкции». Копии попадут в черновики. Прогресс и оценки прежней локальной версии остаются в её хранилище.
-
-## Умный поиск и генерация черновиков
-
-Поиск по содержимому и синонимам работает сразу. Для режима «Найти с ИИ» скопируйте `frontend/.env.example` в `frontend/.env.local`, укажите `AI_BASE_URL`, `AI_MODEL` и `AI_API_KEY`, затем перезапустите сервер. Для Compose поместите эти переменные в `.env` в корне и выполните `docker compose up -d`. Без провайдера доступны ручной редактор, шаблоны и поиск по словам. Поддерживается OpenAI-совместимый Chat Completions API. Храните ключ в серверной переменной окружения.
 
 ## Структура проекта
 
