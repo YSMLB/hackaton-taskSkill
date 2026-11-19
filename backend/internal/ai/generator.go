@@ -100,6 +100,25 @@ func GenerateGuideDraft(ctx context.Context, prompt string, category string, min
 		return nil, errors.New("опиши тему инструкции подробнее (от 5 до 1000 символов)")
 	}
 
+	if category == "" {
+		category = "Учёба"
+	}
+	if minutes < 5 || minutes > 1440 {
+		minutes = 20
+	}
+
+	// Попытка сгенерировать через сконфигурированный AI провайдер
+	guide, err := callAIProvider(ctx, prompt, category, minutes, authorProfile)
+	if err == nil && guide != nil {
+		return guide, nil
+	}
+
+	// Если модель недоступна, нет сети или провайдер вернул ошибку,
+	// используем детерминированный контекстный генератор шаблонов
+	return FallbackGuideDraft(prompt, category, minutes, authorProfile)
+}
+
+func callAIProvider(ctx context.Context, prompt string, category string, minutes int, authorProfile *models.Profile) (*models.Instruction, error) {
 	if !IsConfigured() {
 		return nil, errors.New("ИИ-сервис генерации не настроен на сервере")
 	}
@@ -116,13 +135,6 @@ func GenerateGuideDraft(ctx context.Context, prompt string, category string, min
 	}
 
 	apiURL := fmt.Sprintf("%s/chat/completions", strings.TrimRight(baseURLStr, "/"))
-
-	if category == "" {
-		category = "Учёба"
-	}
-	if minutes < 5 || minutes > 1440 {
-		minutes = 20
-	}
 
 	userContent := fmt.Sprintf("Тема: %s\nКатегория: %s\nПримерное время: %d минут", prompt, category, minutes)
 
@@ -189,6 +201,149 @@ func GenerateGuideDraft(ctx context.Context, prompt string, category string, min
 	}
 
 	return SanitizeGuideOutput(raw, category, minutes, authorProfile)
+}
+
+func FallbackGuideDraft(prompt, category string, minutes int, authorProfile *models.Profile) (*models.Instruction, error) {
+	title := prompt
+	runes := []rune(title)
+	if len(runes) > 0 {
+		title = strings.ToUpper(string(runes[:1])) + string(runes[1:])
+	}
+
+	lower := strings.ToLower(prompt)
+	var steps []RawStep
+
+	if strings.Contains(lower, "docker") || strings.Contains(lower, "докер") || strings.Contains(lower, "контейнер") {
+		steps = []RawStep{
+			{
+				ID:       "step-1",
+				Title:    "Подготовка базового образа и .dockerignore",
+				Text:     fmt.Sprintf("Создайте базовый Dockerfile для проекта по теме «%s». Настройте исключение лишних файлов и зависимостей в .dockerignore для ускорения сборки.", prompt),
+				Code:     strPtr("FROM alpine:latest\nWORKDIR /app\nCOPY . .\nCMD [\"sh\"]"),
+				Filename: strPtr("Dockerfile"),
+				Checks:   []string{"Создан Dockerfile с базовым образом", "Настроен .dockerignore"},
+			},
+			{
+				ID:       "step-2",
+				Title:    "Конфигурация docker-compose",
+				Text:     "Опишите сервисы, порты, переменные окружения и изолированную сеть в конфигурационном файле docker-compose.yml.",
+				Code:     strPtr("services:\n  app:\n    build: .\n    ports:\n      - \"8080:8080\"\n    restart: unless-stopped"),
+				Filename: strPtr("docker-compose.yml"),
+				Checks:   []string{"Определены сервисы и порты", "Сконфигурирована внутренняя сеть"},
+			},
+			{
+				ID:       "step-3",
+				Title:    "Запуск контейнеров и проверка статуса",
+				Text:     "Запустите стек в фоновом режиме и убедитесь, что все контейнеры перешли в статус running без ошибок в логах.",
+				Code:     strPtr("docker compose up -d\ndocker compose ps"),
+				Filename: strPtr("terminal"),
+				Checks:   []string{"Команда up выполнена без ошибок", "Контейнеры активны (Up)"},
+			},
+			{
+				ID:       "step-4",
+				Title:    "Верификация и логирование",
+				Text:     "Проверьте доступность приложения запросом и проинспектируйте логи на отсутствие предупреждений и сбоев.",
+				Code:     strPtr("docker compose logs -f app"),
+				Filename: strPtr("terminal"),
+				Checks:   []string{"Логи приложения чистые", "Healthcheck возвращает 200 OK"},
+			},
+		}
+	} else if strings.Contains(lower, "отчет") || strings.Contains(lower, "отчёт") || strings.Contains(lower, "лабораторн") || strings.Contains(lower, "курсов") {
+		steps = []RawStep{
+			{
+				ID:     "step-1",
+				Title:  "Сбор исходных данных и требований",
+				Text:   fmt.Sprintf("Соберите методические указания, исходные варианты и результаты экспериментов по теме «%s». Проверьте соответствие требованиям кафедры.", prompt),
+				Checks: []string{"Методичка и требования под рукой", "Исходные результаты зафиксированы"},
+			},
+			{
+				ID:     "step-2",
+				Title:  "Структурирование и расчёты",
+				Text:   "Оформите расчётную часть, заполните сводные таблицы с указанием размерностей и единиц измерения.",
+				Checks: []string{"Таблицы данных заполнены", "Единицы измерения проверены"},
+			},
+			{
+				ID:     "step-3",
+				Title:  "Построение графиков и иллюстраций",
+				Text:   "Подготовьте наглядные схемы и графики зависимостей. Подпишите координатные оси и нумерацию рисунков согласно ГОСТ.",
+				Checks: []string{"Графики снабжены подписями осей", "Рисунки пронумерованы и подписаны"},
+			},
+			{
+				ID:     "step-4",
+				Title:  "Формулирование выводов и проверка оформления",
+				Text:   "Сопоставьте полученные результаты с целью работы, сформулируйте аргументированный вывод и сохраните итоговый отчёт.",
+				Checks: []string{"Вывод соотносится с целью работы", "Файл проверен и сохранён"},
+			},
+		}
+	} else if strings.Contains(lower, "git") || strings.Contains(lower, "гит") || strings.Contains(lower, "репозитор") {
+		steps = []RawStep{
+			{
+				ID:       "step-1",
+				Title:    "Инициализация и настройка ветки",
+				Text:     fmt.Sprintf("Создайте чистую рабочую ветку для задачи «%s» и проверьте актуальность локального репозитория.", prompt),
+				Code:     strPtr("git checkout -b feat/new-feature\ngit status"),
+				Filename: strPtr("terminal"),
+				Checks:   []string{"Создана изолированная ветка", "Рабочее дерево без лишних изменений"},
+			},
+			{
+				ID:       "step-2",
+				Title:    "Внесение изменений и подготовка коммита",
+				Text:     "Добавьте измененные файлы в индекс и оформите атомарный коммит по стандарту Conventional Commits.",
+				Code:     strPtr("git add .\ngit commit -m \"feat: implement core functionality\""),
+				Filename: strPtr("terminal"),
+				Checks:   []string{"Файлы добавлены в stage", "Сообщение коммита следует стандарту"},
+			},
+			{
+				ID:       "step-3",
+				Title:    "Отправка в удалённый репозиторий и Pull Request",
+				Text:     "Отправьте ветку на сервер и откройте Pull Request с подробным описанием изменений для ревью.",
+				Code:     strPtr("git push -u origin feat/new-feature"),
+				Filename: strPtr("terminal"),
+				Checks:   []string{"Ветка отправлена на remote", "Pull Request открыт и готов к ревью"},
+			},
+		}
+	} else {
+		steps = []RawStep{
+			{
+				ID:     "step-1",
+				Title:  "Подготовка и планирование",
+				Text:   fmt.Sprintf("Определите основные цели и требования для задачи «%s». Подготовьте рабочее пространство и необходимые инструменты.", prompt),
+				Checks: []string{"Цели задачи четко сформулированы", "Необходимые инструменты установлены"},
+			},
+			{
+				ID:     "step-2",
+				Title:  "Настройка конфигурации и окружения",
+				Text:   "Задайте параметры окружения, конфигурационные переменные и проверьте доступность ключевых зависимостей.",
+				Checks: []string{"Параметры конфигурации проверены", "Окружение готово к исполнению"},
+			},
+			{
+				ID:     "step-3",
+				Title:  "Пошаговая реализация",
+				Text:   fmt.Sprintf("Выполните ключевые действия по реализации «%s», следуя лучшим практикам и архитектурным соглашениям.", prompt),
+				Checks: []string{"Основной сценарий выполнен", "Отсутствуют блокирующие ошибки"},
+			},
+			{
+				ID:     "step-4",
+				Title:  "Тестирование и верификация результата",
+				Text:   "Проведите контрольную проверку полученного результата, протестируйте граничные случаи и убедитесь в стабильности.",
+				Checks: []string{"Тестовые проверки завершены успешно", "Результат полностью соответствует требованиям"},
+			},
+		}
+	}
+
+	raw := RawGuideOutput{
+		Title:       title,
+		Description: fmt.Sprintf("Пошаговое практическое руководство по теме «%s». Разработано для платформы StepFlow.", prompt),
+		Category:    category,
+		Minutes:     minutes,
+		Steps:       steps,
+	}
+
+	return SanitizeGuideOutput(raw, category, minutes, authorProfile)
+}
+
+func strPtr(s string) *string {
+	return &s
 }
 
 func SanitizeGuideOutput(raw RawGuideOutput, defaultCategory string, defaultMinutes int, authorProfile *models.Profile) (*models.Instruction, error) {
