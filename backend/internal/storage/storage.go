@@ -20,6 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 	"stepflow/backend/internal/data"
 	"stepflow/backend/internal/models"
+	"stepflow/backend/internal/provider"
 )
 
 const (
@@ -52,8 +53,9 @@ func NewWorkspaceError(msg string, status ...int) *WorkspaceError {
 }
 
 type Storage struct {
-	db *sql.DB
-	mu sync.Mutex
+	moderationWake chan struct{}
+	db             *sql.DB
+	mu             sync.Mutex
 }
 
 func New(dbPath string) (*Storage, error) {
@@ -112,7 +114,7 @@ func New(dbPath string) (*Storage, error) {
 		}
 	}
 
-	return &Storage{db: db}, nil
+	return &Storage{db: db, moderationWake: make(chan struct{}, 1)}, nil
 }
 
 func (s *Storage) Close() error {
@@ -574,9 +576,19 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 		}
 	}
 
+	var autoModeration *bool
 	var moderation *models.ModerationData
 	if models.IsAdmin(profile) {
-		moderation = &models.ModerationData{Decisions: state.ModerationDecisions, Experts: []models.ExpertSummary{}}
+		autoModeration = &state.AutoModeration
+		moderation = &models.ModerationData{ManualReviewNotes: map[string]string{}, Decisions: state.ModerationDecisions, Experts: []models.ExpertSummary{}}
+		if state.AutoModeration && !provider.Configured() {
+			moderation.PausedReason = "Автопроверка приостановлена. Проверьте настройки ИИ-сервиса на сервере."
+		}
+		for id, attempt := range state.AutoReviews {
+			if attempt.ManualNote != "" {
+				moderation.ManualReviewNotes[id] = attempt.ManualNote
+			}
+		}
 		for _, account := range state.Accounts {
 			if account.Role == "Эксперт" {
 				moderation.Experts = append(moderation.Experts, models.ExpertSummary{
@@ -589,16 +601,17 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 	return models.WorkspaceSnapshot{
 		Profile: profile,
 		Data: models.WorkspaceData{
-			MyQuestions: myQuestions,
-			Teams:       teams,
-			Notices:     notices,
-			Guides:      viewableGuides,
-			Runs:        myRuns,
-			Votes:       filteredVotes,
-			Comments:    filteredComments,
-			Reviews:     filteredReviews,
-			Analytics:   analytics,
-			Moderation:  moderation,
+			MyQuestions:    myQuestions,
+			Teams:          teams,
+			Notices:        notices,
+			Guides:         viewableGuides,
+			Runs:           myRuns,
+			Votes:          filteredVotes,
+			Comments:       filteredComments,
+			Reviews:        filteredReviews,
+			Analytics:      analytics,
+			Moderation:     moderation,
+			AutoModeration: autoModeration,
 		},
 	}
 }
@@ -867,6 +880,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			}
 
 			if previous != nil {
+				delete(state.AutoReviews, id)
 				state.Guides[prevIndex] = guide
 			} else {
 				state.Guides = append([]models.Instruction{guide}, state.Guides...)
@@ -914,11 +928,9 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 
 		key := validateGuideID(command["guideId"])
 		var guide *models.Instruction
-		var guideIndex int = -1
 		for i, g := range state.Guides {
 			if g.ID == key {
 				guide = &state.Guides[i]
-				guideIndex = i
 				break
 			}
 		}
@@ -937,21 +949,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			requireCondition(decision == "approve" || decision == "reject", "Выбери решение.")
 
 			note := textValidation(command["note"], 2000, decision == "reject")
-			guide.ModerationNote = note
-			if decision == "approve" {
-				guide.Status = models.StatusPublished
-			} else {
-				guide.Status = models.StatusRejected
-			}
-			guide.ReviewedAt = time.Now().UTC().Format(time.RFC3339)
-			guide.ReviewedBy = current.Name
-			state.ModerationDecisions = append(state.ModerationDecisions, moderationDecision(RandomUUID(), *guide))
-			message := "Инструкцию вернули на доработку"
-			if decision == "approve" {
-				message = "Инструкция опубликована"
-			}
-			notify(state, guide.OwnerID, actor, message, "/editor?id="+key)
-			state.Guides[guideIndex] = *guide
+			applyModeration(state, guide, decision, note, current.Name, actor)
 			break
 		}
 
@@ -1213,12 +1211,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		Count:   outCount,
 	}
 
-	updatedBytes, err := json.Marshal(state)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if _, err := tx.Exec("UPDATE workspace SET payload = ? WHERE id = 1", string(updatedBytes)); err != nil {
+	if err := saveState(tx, state); err != nil {
 		return nil, nil, err
 	}
 
@@ -1226,5 +1219,11 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		return nil, nil, err
 	}
 
+	if cmdType == "auto-moderation" || (cmdType == "save" && command["submit"] == true && state.AutoModeration) {
+		select {
+		case s.moderationWake <- struct{}{}:
+		default:
+		}
+	}
 	return result, outNextToken, nil
 }

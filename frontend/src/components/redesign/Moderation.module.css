@@ -10,6 +10,10 @@
 .toolbar h2, .expertPanel h2 { font-size: 1.16rem; }
 .search, .filter select { min-height: 2.5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--white); padding: 8px 10px; font-size: .875rem; }
 .search { width: min(305px, 100%); }
+.autoModeration { margin-bottom: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+.autoModeration label { display: inline-flex; align-items: center; gap: 9px; min-height: 32px; font-size: .95rem; font-weight: 650; cursor: pointer; }
+.autoModeration input { width: 18px; height: 18px; accent-color: var(--accent); }
+.autoModeration p { margin-top: 4px; color: var(--muted); font-size: .875rem; }
 .filter { display: grid; gap: 4px; color: var(--muted); font-size: .75rem; }
 .stack { display: grid; gap: 12px; padding: 0; list-style: none; }
 .stack :global(.review-card) h3 { font-size: 1.125rem; overflow-wrap: anywhere; }

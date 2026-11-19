@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"stepflow/backend/internal/models"
+	"stepflow/backend/internal/provider"
 )
 
 func moderationDecision(id string, guide models.Instruction) models.ModerationDecision {
@@ -58,6 +59,15 @@ func mediaURL(raw any) string {
 func changeAccount(state *models.State, profile *models.Profile, kind string, command map[string]any) bool {
 	actor := models.ActorID(*profile)
 	switch kind {
+	case "auto-moderation":
+		requireCondition(models.IsAdmin(profile), "Автопроверку настраивает администратор.", 403)
+		enabled, ok := command["enabled"].(bool)
+		requireCondition(ok, "Укажи состояние автопроверки.")
+		requireCondition(!enabled || provider.Configured(), "Настройте ИИ-сервис для автопроверки.", 503)
+		if state.AutoModeration != enabled {
+			state.AutoModeration = enabled
+			state.ModerationEpoch++
+		}
 	case "plan":
 		plan := textValidation(command["plan"], 20, true)
 		requireCondition(plan == "standard" || plan == "business" || plan == "free", "Выбери тариф.")

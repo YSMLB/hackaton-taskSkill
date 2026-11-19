@@ -130,16 +130,17 @@ type GuideMetrics struct {
 }
 
 type WorkspaceData struct {
-	MyQuestions []Report                   `json:"myQuestions"`
-	Moderation  *ModerationData            `json:"moderation,omitempty"`
-	Teams       []TeamSummary              `json:"teams"`
-	Notices     []Notice                   `json:"notices"`
-	Guides      []Instruction              `json:"guides"`
-	Runs        map[string]Run             `json:"runs"`
-	Votes       map[string]map[string]Vote `json:"votes"`
-	Comments    []StepComment              `json:"comments"`
-	Reviews     []ExpertReview             `json:"reviews"`
-	Analytics   map[string]GuideMetrics    `json:"analytics"`
+	AutoModeration *bool                      `json:"autoModeration,omitempty"`
+	MyQuestions    []Report                   `json:"myQuestions"`
+	Moderation     *ModerationData            `json:"moderation,omitempty"`
+	Teams          []TeamSummary              `json:"teams"`
+	Notices        []Notice                   `json:"notices"`
+	Guides         []Instruction              `json:"guides"`
+	Runs           map[string]Run             `json:"runs"`
+	Votes          map[string]map[string]Vote `json:"votes"`
+	Comments       []StepComment              `json:"comments"`
+	Reviews        []ExpertReview             `json:"reviews"`
+	Analytics      map[string]GuideMetrics    `json:"analytics"`
 }
 
 type WorkspaceSnapshot struct {
@@ -154,7 +155,16 @@ type CommandResult struct {
 	Count   *int          `json:"count,omitempty"`
 }
 
+type AutoReviewAttempt struct {
+	Failures   int    `json:"failures,omitempty"`
+	RetryAt    int64  `json:"retryAt,omitempty"`
+	ManualNote string `json:"manualNote,omitempty"`
+}
+
 type State struct {
+	AutoModeration      bool                         `json:"autoModeration,omitempty"`
+	ModerationEpoch     int                          `json:"moderationEpoch,omitempty"`
+	AutoReviews         map[string]AutoReviewAttempt `json:"autoReviews,omitempty"`
 	ModerationDecisions []ModerationDecision         `json:"moderationDecisions"`
 	Teams               []Team                       `json:"teams"`
 	Notices             map[string][]Notice          `json:"notices"`
@@ -169,8 +179,10 @@ type State struct {
 }
 
 type ModerationData struct {
-	Decisions []ModerationDecision `json:"decisions"`
-	Experts   []ExpertSummary      `json:"experts"`
+	PausedReason      string               `json:"pausedReason,omitempty"`
+	ManualReviewNotes map[string]string    `json:"manualReviewNotes,omitempty"`
+	Decisions         []ModerationDecision `json:"decisions"`
+	Experts           []ExpertSummary      `json:"experts"`
 }
 
 type ModerationDecision struct {

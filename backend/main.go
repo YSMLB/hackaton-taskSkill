@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"stepflow/backend/internal/ai"
 	"stepflow/backend/internal/handlers"
 	"stepflow/backend/internal/storage"
 )
@@ -30,6 +31,10 @@ func main() {
 	}
 	defer store.Close()
 
+	workerContext, stopWorker := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); ai.RunModeration(workerContext, store) }()
+
 	srv := handlers.NewServer(store)
 	mux := http.NewServeMux()
 
@@ -48,7 +53,7 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		WriteTimeout: 105 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -63,6 +68,8 @@ func main() {
 	}()
 
 	<-stop
+	stopWorker()
+	<-workerDone
 	log.Println("Shutting down StepFlow backend...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

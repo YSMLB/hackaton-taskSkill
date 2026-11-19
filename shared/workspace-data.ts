@@ -21,8 +21,9 @@ export interface ModerationDecision {
 }
 export interface ExpertSummary { id: string; name: string; email: string; active: boolean }
 export interface WorkspaceData {
+  autoModeration?: boolean;
   myQuestions?: Report[];
-  moderation?: { decisions: ModerationDecision[]; experts: ExpertSummary[] };
+  moderation?: { decisions: ModerationDecision[]; experts: ExpertSummary[]; manualReviewNotes?: Record<string, string>; pausedReason?: string };
   teams: Team[];
   notices: Notice[];
   guides: Instruction[];
@@ -51,6 +52,7 @@ export type Command =
   | { type: 'save'; guide: Instruction; submit: boolean }
   | { type: 'fork'; guideId: string }
   | { type: 'moderate'; guideId: string; revision?: number; decision: 'approve' | 'reject'; note: string }
+  | { type: 'auto-moderation'; enabled: boolean }
   | { type: 'vote'; guideId: string; value: Vote }
   | { type: 'comment' | 'help'; guideId: string; stepId: string; text: string }
   | { type: 'review'; guideId: string; verified: boolean; text: string }

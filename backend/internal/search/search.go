@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"stepflow/backend/internal/provider"
 )
 
 type SearchCandidate struct {
@@ -31,11 +34,7 @@ type SearchResponse struct {
 	Mode string   `json:"mode"`
 }
 
-func IsConfigured() bool {
-	return os.Getenv("AI_API_KEY") != "" &&
-		os.Getenv("AI_BASE_URL") != "" &&
-		os.Getenv("AI_MODEL") != ""
-}
+func IsConfigured() bool { return provider.Configured() }
 
 func cleanCodeFence(s string) string {
 	s = strings.TrimSpace(s)
@@ -83,12 +82,15 @@ func PerformAISearch(ctx context.Context, query string, candidates []SearchCandi
 		Content string `json:"content"`
 	}
 	type chatRequest struct {
-		Model    string        `json:"model"`
-		Messages []chatMessage `json:"messages"`
+		Model          string            `json:"model"`
+		Messages       []chatMessage     `json:"messages"`
+		ResponseFormat map[string]string `json:"response_format,omitempty"`
+		Temperature    float64           `json:"temperature"`
 	}
 
-	reqBody, err := json.Marshal(chatRequest{
-		Model: os.Getenv("AI_MODEL"),
+	payload := chatRequest{
+		ResponseFormat: map[string]string{"type": "json_object"},
+		Model:          os.Getenv("AI_MODEL"),
 		Messages: []chatMessage{
 			{
 				Role:    "system",
@@ -99,22 +101,34 @@ func PerformAISearch(ctx context.Context, query string, candidates []SearchCandi
 				Content: string(userPayloadBytes),
 			},
 		},
-	})
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	send := func() (*http.Response, error) {
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+os.Getenv("AI_API_KEY"))
+		req.Header.Set("Content-Type", "application/json")
+		return http.DefaultClient.Do(req)
+	}
+	resp, err := send()
 	if err != nil {
 		return nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+os.Getenv("AI_API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
+	// Older providers may reject the JSON output option.
+	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity {
+		resp.Body.Close()
+		payload.ResponseFormat = nil
+		resp, err = send()
+		if err != nil {
+			return nil, err
+		}
 	}
 	defer resp.Body.Close()
 
@@ -129,7 +143,7 @@ func PerformAISearch(ctx context.Context, query string, candidates []SearchCandi
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&chatResp); err != nil {
 		return nil, err
 	}
 
@@ -142,8 +156,16 @@ func PerformAISearch(ctx context.Context, query string, candidates []SearchCandi
 	var parsed struct {
 		IDs []string `json:"ids"`
 	}
-	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+	if strings.HasPrefix(content, "[") {
+		err = json.Unmarshal([]byte(content), &parsed.IDs)
+	} else {
+		err = json.Unmarshal([]byte(content), &parsed)
+	}
+	if err != nil {
 		return nil, err
+	}
+	if parsed.IDs == nil {
+		return nil, errors.New("AI search response must contain an array of IDs")
 	}
 
 	allowed := make(map[string]bool)

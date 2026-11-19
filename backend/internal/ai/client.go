@@ -12,13 +12,11 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"stepflow/backend/internal/provider"
 )
 
-func IsConfigured() bool {
-	return os.Getenv("AI_API_KEY") != "" &&
-		os.Getenv("AI_BASE_URL") != "" &&
-		os.Getenv("AI_MODEL") != ""
-}
+func IsConfigured() bool { return provider.Configured() }
 
 type chatMessage struct {
 	Role    string `json:"role"`

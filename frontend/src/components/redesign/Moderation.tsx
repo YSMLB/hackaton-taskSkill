@@ -55,6 +55,7 @@ function Queue({ guides }: { guides: Instruction[] }) {
       <div><h2>Проверка инструкций</h2><p>Сначала показаны материалы, которые дольше всего ждут решения.</p></div>
       {guides.length > 0 && <input className={styles.search} type="search" aria-label="Поиск по очереди" placeholder="Название, автор или категория" value={query} onChange={event => setQuery(event.target.value)} />}
     </div>
+    <AutoModeration />
     {visible.length ? <div className={styles.stack}>{visible.map(guide =>
       <ReviewCard key={`${guide.id}:${guide.revision ?? 0}`} guide={guide} />
     )}</div> : <div className={styles.empty}>
@@ -64,8 +65,23 @@ function Queue({ guides }: { guides: Instruction[] }) {
   </section>;
 }
 
+function AutoModeration() {
+  const { data, send, pending } = useStore();
+  if (data.autoModeration === undefined) return null;
+  return <div className={styles.autoModeration}>
+    <label>
+      <input type="checkbox" role="switch" checked={data.autoModeration === true} disabled={pending}
+        aria-describedby="auto-moderation-description"
+        onChange={event => void send({ type: 'auto-moderation', enabled: event.target.checked })} />
+      Автоматическая модерация с ИИ
+    </label>
+    <p id="auto-moderation-description" role="status">{data.moderation?.pausedReason || 'ИИ проверяет текущую очередь и новые заявки. Подходящие инструкции публикует, остальные возвращает автору с замечанием или оставляет администратору для проверки.'}</p>
+  </div>;
+}
+
 function ReviewCard({ guide }: { guide: Instruction }) {
-  const { send, pending, notify } = useStore();
+  const { data, send, pending, notify } = useStore();
+  const manualReviewNote = data.moderation?.manualReviewNotes?.[guide.id];
   const [note, setNote] = useState('');
   const noteInput = useRef<HTMLTextAreaElement>(null);
   const [error, setError] = useState('');
@@ -90,6 +106,7 @@ function ReviewCard({ guide }: { guide: Instruction }) {
       <Link href={`/guide?id=${encodeURIComponent(guide.id)}`} className="button button-outline">Предпросмотр <ArrowUpRight size={16} aria-hidden="true" /></Link>
     </div>
     <p>{guide.description}</p>
+    {manualReviewNote && <p className={styles.note}><strong>Требуется проверка администратора. </strong>{manualReviewNote}</p>}
     {guide.source && <p className="fork-origin">Форк «{guide.source.title}». Автор исходника: {guide.source.author}</p>}
     <details className="review-content">
       <summary>Содержание · {guide.steps.length} шагов</summary>
