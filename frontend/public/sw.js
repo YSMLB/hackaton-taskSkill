@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stepflow-offline-v1';
+const CACHE_NAME = 'stepflow-offline-v2';
 const OFFLINE_PATH = '/offline';
 const assetPath = '/_next/static/';
 
@@ -52,11 +52,13 @@ self.addEventListener('fetch', event => {
   if (url.pathname.startsWith(assetPath)) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
-      const cached = await cache.match(url.pathname, { ignoreVary: true });
-      if (cached) return cached;
-      const response = await fetch(request);
-      if (response.ok) await cache.put(url.pathname, response.clone());
-      return response;
+      try {
+        const response = await fetch(request, { cache: 'no-cache' });
+        if (response.ok) await cache.put(request, response.clone());
+        return response;
+      } catch {
+        return await cache.match(request, { ignoreVary: true }) || Response.error();
+      }
     })());
   }
 });
