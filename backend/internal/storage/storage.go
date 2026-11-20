@@ -223,6 +223,7 @@ func (s *Storage) profileFor(tx *sql.Tx, state *models.State, token string) *mod
 	if !ok {
 		return nil
 	}
+	if profile.Role == "Автор" { profile.Role = "Ученик" }
 	return &profile
 }
 
@@ -351,6 +352,7 @@ func parseGuide(val any, profile *models.Profile, previous *models.Instruction, 
 	}
 
 	return models.Instruction{
+		AIGenerated: raw["aiGenerated"] == true || (previous != nil && previous.AIGenerated),
 		ID:          id,
 		Title:       title,
 		Description: desc,
@@ -728,7 +730,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			rawProfile, ok := command["profile"].(map[string]any)
 			requireCondition(ok, "Некорректные данные.")
 			email = textValidation(rawProfile["email"], 254, false)
-			role = textValidation(rawProfile["role"], 40, true)
+			role = "Ученик"
 			name = textValidation(rawProfile["name"], 100, false)
 			if name == "" {
 				name = "Участник"

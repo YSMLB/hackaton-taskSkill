@@ -38,7 +38,7 @@ function WorkspaceContent({ screen }: { screen: Screen }) {
   const stepId = params.get('step');
   if (screen === 'mentor') {
     const step = guide?.steps.find(item => item.id === stepId);
-    if (!aiEnabled) return <WorkShell active="mentor"><Empty title="Напарник отключён"
+    if (!aiEnabled) return <WorkShell active="mentor"><Empty title="Artem.AI отключён"
       text="Ты можешь вернуть функции ИИ в настройках сайта."
       action={<Link className="button button-dark" href="/profile?tab=settings">Открыть настройки</Link>} /></WorkShell>;
     return <WorkShell active="mentor">{guide?.status === 'published' && step
@@ -152,7 +152,7 @@ function ContinueCard({ guide }: { guide: Instruction }) {
 }
 function GuideCard({ guide: g, author }: { guide: Instruction; index: number; author: boolean }) {
   const { data } = useStore(); const run = data.runs[g.id];
-  return <article className="guide-card">{g.cover && <div className="guide-card-art" aria-hidden="true"><GuideCover cover={g.cover} /></div>}<div className="guide-card-body"><div className="card-labels"><span className="pill">{g.category}</span>{g.source && <span className="pill fork-label">Форк</span>}{author && <span className={`status ${g.status}`}>{publicationLabels[g.status]}</span>}</div><h2><Link className="guide-card-open" href={`/${author ? 'editor' : 'guide'}?id=${g.id}`}>{g.title}</Link></h2><p>{g.description}</p>{g.source && <p className="card-source">Основано на «{g.source.title}»</p>}<div className="guide-card-badges"><RatingLabel id={g.id} /><VerifiedBadge guideId={g.id} /></div><div className="guide-meta"><span><ListChecks size={16} />{g.steps.length} шага</span><span><Clock size={16} />~{g.minutes} мин</span></div>{run && !author && <div className="card-progress"><span>{run.completed.length === g.steps.length ? 'Пройдено' : `Выполнено ${run.completed.length} из ${g.steps.length}`}</span><div className="progress-track"><span style={{ width: `${run.completed.length / g.steps.length * 100}%` }} /></div></div>}<div className="guide-card-footer"><span>{author ? 'Автор: ты' : g.author}</span><span className="round-link" aria-hidden="true"><ArrowUpRight size={19} /></span></div>{author && <Link className="analytics-link" href={`/analytics?id=${g.id}`}><BarChart3 size={16} />Статистика и вопросы</Link>}</div></article>;
+  return <article className="guide-card">{g.cover && <div className="guide-card-art" aria-hidden="true"><GuideCover cover={g.cover} /></div>}<div className="guide-card-body"><div className="card-labels"><span className="pill">{g.category}</span>{g.aiGenerated && <span className="pill">Создано с ИИ</span>}{g.source && <span className="pill fork-label">Форк</span>}{author && <span className={`status ${g.status}`}>{publicationLabels[g.status]}</span>}</div><h2><Link className="guide-card-open" href={`/${author ? 'editor' : 'guide'}?id=${g.id}`}>{g.title}</Link></h2><p>{g.description}</p>{g.source && <p className="card-source">Основано на «{g.source.title}»</p>}<div className="guide-card-badges"><RatingLabel id={g.id} /><VerifiedBadge guideId={g.id} /></div><div className="guide-meta"><span><ListChecks size={16} />{g.steps.length} шага</span><span><Clock size={16} />~{g.minutes} мин</span></div>{run && !author && <div className="card-progress"><span>{run.completed.length === g.steps.length ? 'Пройдено' : `Выполнено ${run.completed.length} из ${g.steps.length}`}</span><div className="progress-track"><span style={{ width: `${run.completed.length / g.steps.length * 100}%` }} /></div></div>}<div className="guide-card-footer"><span>{author ? 'Автор: ты' : g.author}</span><span className="round-link" aria-hidden="true"><ArrowUpRight size={19} /></span></div>{author && <Link className="analytics-link" href={`/analytics?id=${g.id}`}><BarChart3 size={16} />Статистика и вопросы</Link>}</div></article>;
 }
 function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?: boolean }) {
   const params = useSearchParams();
@@ -242,6 +242,7 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
       <span className="saved-label"><CheckCheckIcon />{published ? 'Прогресс сохраняется в профиле' : 'Предпросмотр'}</span>
     </div>
     <h1 className="player-guide-title">{guide.title}</h1>
+    {guide.aiGenerated && <p className="pill">Создано с ИИ</p>}
     <GuideUtilities guide={guide} />
     <button className="mobile-step-toggle button button-outline" onClick={() => setOverview(!overview)} aria-expanded={overview}>
       Шаг {current + 1} из {guide.steps.length}<ListChecks size={18} />

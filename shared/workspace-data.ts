@@ -44,6 +44,7 @@ export type Command =
   | { type: 'logout' }
   | { type: 'plan'; plan: 'free' | 'standard' | 'business' }
   | { type: 'expert'; email: string; enabled: boolean }
+  | { type: 'admin'; email: string }
   | { type: 'team-create'; name: string }
   | { type: 'team-member'; teamId: string; email: string; remove?: boolean }
   | { type: 'notices-read'; id?: string }

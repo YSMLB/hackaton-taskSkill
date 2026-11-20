@@ -36,6 +36,7 @@ export function Moderation() {
     <header className={styles.header}>
       <h1>Админ-панель</h1>
     </header>
+    <AdminAssignment />
     <nav className={styles.sections} aria-label="Разделы админ-панели">
       {sections.map(item => <Link key={item.id} href={item.href} aria-current={item.id === section.id ? 'page' : undefined}>
         {item.label}{item.id === 'queue' && <span className={styles.count}>{queue.length}</span>}
@@ -43,6 +44,20 @@ export function Moderation() {
     </nav>
     {section.id === 'queue' ? <Queue guides={queue} /> : section.id === 'history' ? <History decisions={decisions} /> : <Experts experts={experts} />}
   </div>;
+}
+
+function AdminAssignment() {
+  const { send, pending, notify } = useStore();
+  const [email, setEmail] = useState('');
+  return <form className={styles.content} onSubmit={async event => {
+    event.preventDefault();
+    if (await send({ type: 'admin', email })) { setEmail(''); notify('Администратор назначен'); }
+  }}>
+    <h2>Добавить администратора</h2>
+    <div className="field"><label htmlFor="admin-email">Email зарегистрированного пользователя</label>
+      <input id="admin-email" type="email" required value={email} onChange={event => setEmail(event.target.value)} /></div>
+    <button className="button button-dark" disabled={pending || !email.trim()}>Назначить администратором</button>
+  </form>;
 }
 
 function Queue({ guides }: { guides: Instruction[] }) {

@@ -135,7 +135,7 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
   const groups = [
     { label: 'Инструкции', links: [
       { href: '/catalog', label: 'Каталог', current: active === 'catalog', Icon: LayoutGrid },
-      ...(aiEnabled ? [{ href: '/mentor', label: 'Напарник', current: active === 'mentor', Icon: MessageSquareText }] : []),
+      ...(aiEnabled ? [{ href: '/mentor', label: 'Artem.AI', current: active === 'mentor', Icon: MessageSquareText }] : []),
       { href: '/offline', label: 'Офлайн', current: false, Icon: Download },
     ] },
     { label: 'Аккаунт', links: [

@@ -3,7 +3,7 @@ import type { Plan } from '@shared/community';
 export const paidPlans = [
   {
     id: 'standard',
-    name: 'Обычная подписка',
+    name: 'StepFlow Plus',
     summary: 'Для тех, кто хочет проверять инструкции и помогать авторам улучшать их.',
     features: ['Администратор может назначить тебя экспертом.', 'С ролью эксперта можно оставлять рецензии и отмечать проверенные материалы.'],
   },
@@ -20,4 +20,4 @@ export const plans = [
   ...paidPlans,
 ] as const;
 
-export const businessPrice = '1,5× от цены обычной подписки';
+export const businessPrice = '1,5× от цены StepFlow Plus';

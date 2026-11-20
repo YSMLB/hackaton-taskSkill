@@ -37,10 +37,6 @@ func (s *Server) HandleGenerateGuide(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, storage.NewWorkspaceError("Войди в аккаунт, чтобы продолжить.", http.StatusUnauthorized))
 		return
 	}
-	if profile.Role != "Автор" && profile.Role != "Администратор" {
-		s.writeError(w, storage.NewWorkspaceError("Генерация черновиков доступна только авторам и администраторам.", http.StatusForbidden))
-		return
-	}
 
 	if !ai.IsConfigured() {
 		s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{

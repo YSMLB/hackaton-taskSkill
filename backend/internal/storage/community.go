@@ -59,6 +59,14 @@ func mediaURL(raw any) string {
 func changeAccount(state *models.State, profile *models.Profile, kind string, command map[string]any) bool {
 	actor := models.ActorID(*profile)
 	switch kind {
+	case "admin":
+		requireCondition(models.IsAdmin(profile), "Назначать администраторов может администратор.", 403)
+		target := findAccount(state, textValidation(command["email"], 254, true))
+		requireCondition(target != nil, "Пользователь не найден. Сначала ему нужно зарегистрироваться.", 404)
+		target.Role = "Администратор"
+		target.RoleBeforeExpert = ""
+		state.Accounts[models.ActorID(*target)] = *target
+		notify(state, models.ActorID(*target), actor, "Тебя назначили администратором", "/moderation")
 	case "auto-moderation":
 		requireCondition(models.IsAdmin(profile), "Автопроверку настраивает администратор.", 403)
 		enabled, ok := command["enabled"].(bool)

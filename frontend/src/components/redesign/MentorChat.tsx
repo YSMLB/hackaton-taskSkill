@@ -92,7 +92,8 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
     if (requests.current.has(stepId) || thread.reading) return;
     const controller = new AbortController();
     requests.current.set(stepId, controller);
-    update(stepId, { sending: message, error: '' });
+    update(stepId, { sending: message, question: '', error: '' });
+    const timeout = setTimeout(() => controller.abort(), 100_000);
     try {
       const previousScreenshot = [...thread.turns].reverse().find(turn => turn.screenshot)?.screenshot;
       const response = await fetch(step ? '/api/ai/step-hint' : '/api/ai/chat', {
@@ -116,13 +117,15 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
         screenshot: undefined,
       });
     } catch (cause) {
-      if (!controller.signal.aborted) update(stepId, {
+      update(stepId, {
+        question: message,
         error: cause instanceof Error && !(cause instanceof TypeError) && !(cause instanceof SyntaxError)
-          ? cause.message : 'Не удалось связаться с сервером. Попробуй ещё раз.',
+          ? (controller.signal.aborted ? 'Ответ занял слишком много времени. Попробуй ещё раз.' : cause.message) : 'Не удалось связаться с сервером. Попробуй ещё раз.',
       });
     } finally {
+      clearTimeout(timeout);
       requests.current.delete(stepId);
-      if (!controller.signal.aborted) update(stepId, { sending: undefined });
+      update(stepId, { sending: undefined });
     }
   }
 
@@ -133,8 +136,8 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
       if (event.key === 'Escape' && onClose) { event.stopPropagation(); onClose(); }
     }}>
     <div className={styles.chatHeading}>
-      <div><Heading id={headingId}>Напарник</Heading>{step && <p>Шаг {current + 1} из {guide.steps.length} · {step.title}</p>}</div>
-      {onClose ? <button className="icon-button" type="button" aria-label="Закрыть Напарника" onClick={onClose}>
+      <div><Heading id={headingId}>Artem.AI</Heading>{step && <p>Шаг {current + 1} из {guide.steps.length} · {step.title}</p>}</div>
+      {onClose ? <button className="icon-button" type="button" aria-label="Закрыть Artem.AI" onClick={onClose}>
         <X size={19} aria-hidden="true" />
       </button> : <button className="button button-outline" type="button" disabled={pending || thread.reading}
         onClick={() => setThreads({})}><Plus size={17} aria-hidden="true" />Новый чат</button>}
@@ -156,11 +159,11 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
           <b>Ты</b><p>{turn.question}</p>
           {turn.screenshot && <Image unoptimized src={turn.screenshot.url} alt="Приложенный скриншот ошибки" width={280} height={180} />}
         </div>
-        <div className={styles.answer}><b>Напарник</b><p>{turn.answer}</p></div>
+        <div className={styles.answer}><b>Artem.AI</b><p>{turn.answer}</p></div>
       </div>)}
       {pending && <div className={styles.turn}>
         <div className={styles.question}><b>Ты</b><p>{thread.sending}</p></div>
-        <p className="muted" role="status">Напарник готовит ответ…</p>
+        <p className="muted" role="status">Artem.AI готовит ответ…</p>
       </div>}
     </div>
     <form className={styles.composer} onSubmit={event => {

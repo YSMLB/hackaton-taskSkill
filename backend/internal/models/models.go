@@ -47,6 +47,7 @@ type SourceRef struct {
 }
 
 type Instruction struct {
+	AIGenerated    bool              `json:"aiGenerated,omitempty"`
 	TeamID         string            `json:"teamId,omitempty"`
 	Revision       int               `json:"revision,omitempty"`
 	Cover          string            `json:"cover,omitempty"`

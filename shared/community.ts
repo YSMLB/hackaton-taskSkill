@@ -5,6 +5,7 @@ export interface Profile { id?: string; name: string; email: string; role: strin
 export interface Step { id: string; title: string; text: string; code?: string; filename?: string; checks: string[]; imageUrl?: string; videoUrl?: string }
 export interface StepComment { id: string; guideId: string; stepId: string; authorId: string; authorName: string; text: string; createdAt: string }
 export interface Instruction {
+  aiGenerated?: boolean;
   id: string; title: string; description: string; category: string; minutes: number;
   author: string; status: PublicationStatus; owned?: boolean; ownerId?: string; steps: Step[];
   teamId?: string; revision?: number;

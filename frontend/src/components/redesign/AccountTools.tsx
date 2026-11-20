@@ -34,7 +34,7 @@ function Subscriptions() {
       )}</ul>
       <button type="button" className={`button ${plan.id === 'business' ? 'button-dark' : 'button-outline'}`} disabled={pending || active === plan.id}
         onClick={() => void send({ type: 'plan', plan: plan.id })}>
-        {active === plan.id ? 'Текущий тариф' : plan.id === 'free' ? 'Выбрать бесплатный' : plan.id === 'standard' ? 'Выбрать обычную подписку' : 'Выбрать Бизнес'}
+        {active === plan.id ? 'Текущий тариф' : plan.id === 'free' ? 'Выбрать бесплатный' : plan.id === 'standard' ? 'Выбрать Plus' : 'Выбрать Бизнес'}
       </button>
     </article>)}</div>
     {active === 'business' && <div className={styles.teamAccess}>
