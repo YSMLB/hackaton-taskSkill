@@ -6,9 +6,13 @@ const groups = [
   ['презентация', 'презентацию', 'защита', 'защите', 'выступление', 'слайды'],
 ];
 const normalize = (text: string) => text.toLocaleLowerCase('ru').replaceAll('ё', 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const filler = new Set(['как', 'что', 'это', 'для', 'мне', 'хочу', 'нужно', 'найти', 'инструкция', 'инструкцию', 'сделать', 'помоги', 'пожалуйста']);
+export const hasSearchTerms = (query: string) => normalize(query).length > 0;
 export function searchScore(candidate: SearchCandidate, query: string) {
+  if (!query.trim()) return 1;
+  if (!hasSearchTerms(query)) return 0;
   const text = normalize(`${candidate.title} ${candidate.description} ${candidate.category} ${candidate.steps.join(' ')}`);
-  const words = normalize(query).split(' ').filter(w => w.length > 2);
+  const words = normalize(query).split(' ').filter(w => w.length >= 2 && !filler.has(w));
   if (!words.length) return normalize(query) ? (text.includes(normalize(query)) ? 1 : 0) : 1;
   let score = 0;
   for (const word of words) {

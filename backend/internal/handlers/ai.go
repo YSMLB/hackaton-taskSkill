@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 
 	"stepflow/backend/internal/ai"
+	"stepflow/backend/internal/provider"
 	"stepflow/backend/internal/storage"
 )
 
@@ -66,20 +68,13 @@ func (s *Server) HandleGenerateGuide(w http.ResponseWriter, r *http.Request) {
 	}
 
 	variants, err := ai.GenerateGuideVariants(r.Context(), prompt, req.Category, req.Minutes, profile)
-	fallback := err != nil && r.Context().Err() == nil
-	if fallback {
-		category, minutes := req.Category, req.Minutes
-		if category == "" {
-			category = "Учёба"
-		}
-		if minutes < 5 || minutes > 1440 {
-			minutes = 20
-		}
-		guide, fallbackErr := ai.FallbackGuideDraft(prompt, category, minutes, profile)
-		if fallbackErr == nil {
-			variants = append(variants, *guide)
-			err = nil
-		}
+	if errors.Is(err, provider.ErrBusy) {
+		s.writeHintError(w, err, false)
+		return
+	}
+	if err == ai.ErrUnclearTopic {
+		s.writeError(w, storage.NewWorkspaceError(err.Error(), 422))
+		return
 	}
 	if err != nil {
 		s.writeJSON(w, http.StatusBadGateway, map[string]string{
@@ -90,7 +85,6 @@ func (s *Server) HandleGenerateGuide(w http.ResponseWriter, r *http.Request) {
 
 	s.writeJSON(w, http.StatusOK, ai.GenerateGuideResponse{
 		Variants: variants,
-		Fallback: fallback,
 	}, map[string]string{
 		"Cache-Control": "private, no-store",
 	})

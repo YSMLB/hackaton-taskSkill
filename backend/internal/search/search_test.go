@@ -15,8 +15,8 @@ func TestSearchResponseFormat(t *testing.T) {
 		plainOnly bool
 		response  string
 	}{
-		{"JSON object", false, `{"ids":["guide","invented","guide"]}`},
-		{"plain chat provider", true, `["guide","invented","guide"]`},
+		{"JSON object", false, `{"terms":["chart","figure"]}`},
+		{"plain chat provider", true, `{"terms":["chart","figure"]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
@@ -45,9 +45,29 @@ func TestSearchResponseFormat(t *testing.T) {
 			t.Setenv("AI_BASE_URL", provider.URL)
 			t.Setenv("AI_MODEL", "local")
 			t.Setenv("AI_API_KEY", "local")
-			ids, err := PerformAISearch(context.Background(), "query", []SearchCandidate{{ID: "guide"}})
+			ids, err := PerformAISearch(context.Background(), "query", []SearchCandidate{{ID: "guide", Title: "A chart"}})
 			if err != nil || !slices.Equal(ids, []string{"guide"}) {
 				t.Fatalf("result %v, error %v", ids, err)
+			}
+		})
+	}
+}
+
+func TestRankingAcrossCategory(t *testing.T) {
+	candidates := []SearchCandidate{{ID: "slides", Title: "Добавить диаграмму"}, {ID: "charts", Steps: []string{"Построить график"}}}
+	for _, tc := range []struct {
+		name, query string
+		terms       []string
+		ids         []string
+	}{
+		{"two semantic matches", "визуализация данных", []string{"диаграмма", "график"}, []string{"slides", "charts"}},
+		{"catalog irrelevant", "контейнеры Docker", []string{"docker compose", "контейнеризация"}, []string{}},
+		{"no invented matches", "написать отчёт", nil, []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ids := rankCandidates(tc.query, tc.terms, candidates)
+			if !slices.Equal(ids, tc.ids) {
+				t.Fatalf("got ids=%v", ids)
 			}
 		})
 	}

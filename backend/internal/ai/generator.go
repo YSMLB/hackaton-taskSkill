@@ -42,11 +42,14 @@ func CleanCodeFence(s string) string {
 	return s
 }
 
+var ErrUnclearTopic = errors.New("Уточни, что именно хочешь сделать и какой результат получить.")
+
 const systemPrompt = `Предложи автору StepFlow три самостоятельные пошаговые инструкции на одну заданную тему.
-Дай три разных подхода, например быстрый, для новичка и с дополнительной проверкой. Отрази отличие каждого подхода в названии и описании. Каждый вариант должен приводить к результату и содержать 3–4 шага.
+Если из темы непонятно, какой результат нужен (например, есть только число без предмета задачи), верни {"clarification":true}. Не придумывай значение непонятных слов или чисел.
+Для понятной задачи предложи три конкретных метода. Назови в заголовке инструмент или приём. В каждом из 3–4 шагов опиши действие с предметом задачи и наблюдаемый результат.
 Пиши кратко: 1–2 предложения на шаг и 1–2 конкретные проверки. Поля code и filename добавляй только при необходимости.
-Верни только JSON с массивом variants из трёх объектов. Пример структуры одного элемента массива:
-{"title":"Название","description":"Суть подхода","category":"Учёба","minutes":15,"steps":[{"title":"Действие","text":"Как выполнить действие","checks":["Что проверить"]}]}.`
+Верни только JSON с массивом variants из трёх объектов. Корневой объект содержит поле variants. В массиве обязательно три варианта в формате первого примера:
+{"variants":[{"title":"Название","description":"Суть подхода","category":"Учёба","minutes":15,"steps":[{"title":"Действие","text":"Как выполнить действие","checks":["Что проверить"]}]}, ...ещё два объекта такого же вида]}.`
 
 type RawStep struct {
 	ID       string   `json:"id"`
@@ -83,6 +86,10 @@ func GenerateGuideVariants(ctx context.Context, prompt string, category string, 
 	content, err := chatCompletionJSON(ctx, systemPrompt, userContent, 0.7, 45*time.Second)
 	if err != nil {
 		// Fallback without json_object constraint if provider doesn't support it
+		var upstream *ModelHTTPError
+		if !errors.As(err, &upstream) || (upstream.Status != 400 && upstream.Status != 422) {
+			return nil, err
+		}
 		content, err = chatCompletion(ctx, systemPrompt, userContent, 0.7, 45*time.Second)
 		if err != nil {
 			return nil, err
@@ -91,9 +98,14 @@ func GenerateGuideVariants(ctx context.Context, prompt string, category string, 
 	cleanJSON := CleanCodeFence(content)
 
 	var raw struct {
-		Variants []RawGuideOutput `json:"variants"`
+		Clarification bool             `json:"clarification"`
+		Variants      []RawGuideOutput `json:"variants"`
 	}
-	if err := json.Unmarshal([]byte(cleanJSON), &raw); err != nil || len(raw.Variants) == 0 {
+	err = json.Unmarshal([]byte(cleanJSON), &raw)
+	if raw.Clarification {
+		return nil, ErrUnclearTopic
+	}
+	if err != nil || len(raw.Variants) == 0 {
 		var single RawGuideOutput
 		if err2 := json.Unmarshal([]byte(cleanJSON), &single); err2 == nil && len(single.Steps) > 0 {
 			raw.Variants = []RawGuideOutput{single}
@@ -115,6 +127,39 @@ func GenerateGuideVariants(ctx context.Context, prompt string, category string, 
 	}
 	if len(variants) == 0 {
 		return nil, errors.New("ИИ не вернул ни одного варианта с шагами")
+	}
+	if len(variants) < 3 {
+		type supplement struct {
+			guide *models.Instruction
+			err   error
+		}
+		results := make(chan supplement, 3-len(variants))
+		methods := []string{"с минимальным набором инструментов", "с пошаговым примером для новичка", "с проверкой промежуточных результатов"}
+		var titles []string
+		for _, v := range variants {
+			titles = append(titles, v.Title)
+		}
+		for _, method := range methods[len(variants):] {
+			go func(method string) {
+				request := userContent + "\nПодход: " + method + "\nУже предложено: " + strings.Join(titles, ", ")
+				body, err := chatCompletionJSON(ctx, "Предложи один другой конкретный способ. Верни только JSON-объект с полями title, description, category, minutes и steps. Каждый из 3 шагов содержит title, text и checks (массив строк). Пиши на русском.", request, 0.5, 45*time.Second)
+				var extra RawGuideOutput
+				var guide *models.Instruction
+				if err == nil {
+					err = json.Unmarshal([]byte(CleanCodeFence(body)), &extra)
+				}
+				if err == nil {
+					guide, err = SanitizeGuideOutput(extra, category, minutes, authorProfile)
+				}
+				results <- supplement{guide, err}
+			}(method)
+		}
+		for remaining := 3 - len(variants); remaining > 0; remaining-- {
+			extra := <-results
+			if extra.err == nil {
+				variants = append(variants, *extra.guide)
+			}
+		}
 	}
 	return variants, nil
 }

@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"stepflow/backend/internal/models"
+	"stepflow/backend/internal/provider"
 	"stepflow/backend/internal/storage"
 )
 
@@ -46,7 +48,11 @@ func reviewGuide(ctx context.Context, guide models.Instruction) (moderationVerdi
 	if len(payload) > 16000 {
 		return moderationVerdict{"manual", "Объём текста превышает лимит автоматической проверки."}, nil
 	}
-	content, err := chatCompletionJSON(ctx, moderationPrompt, string(payload), 0, 45*time.Second)
+	model := os.Getenv("AI_CHAT_MODEL")
+	if model == "" {
+		model = os.Getenv("AI_MODEL")
+	}
+	content, err := completeMessages(ctx, []chatMessage{{"system", moderationPrompt}, {"user", string(payload)}}, 0, 90*time.Second, "json_object", 320, model)
 	if err != nil {
 		return moderationVerdict{}, err
 	}
@@ -89,6 +95,9 @@ func RunModeration(ctx context.Context, store *storage.Storage) {
 				if err != nil {
 					log.Printf("AI moderation failed for %s: %v", job.Guide.ID, err)
 					result = moderationVerdict{Decision: "retry"}
+					if errors.Is(err, provider.ErrBusy) {
+						result.Decision = "busy"
+					}
 				}
 				err = store.RecordModeration(*job, result.Decision, result.Reason)
 				if err == nil {

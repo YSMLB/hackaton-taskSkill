@@ -11,7 +11,7 @@ import { isAdmin } from '@shared/community';
 import styles from './Chrome.module.css';
 import { NotificationMenu } from './NotificationMenu';
 
-type AppSection = 'catalog' | 'library' | 'author' | 'moderation' | 'profile' | 'team' | 'mentor' | 'subscriptions' | 'notices';
+type AppSection = 'editor' | 'catalog' | 'library' | 'author' | 'moderation' | 'profile' | 'team' | 'mentor' | 'subscriptions' | 'notices';
 
 export function Logo({ href = '/', onClick }: { href?: string; onClick?: () => void }) {
   return <Link className="brand" href={href} onClick={onClick} aria-label={href === '/catalog' ? 'StepFlow, каталог инструкций' : 'StepFlow, главная'}><span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className={styles.brandName}>StepFlow<span className="logo-dot">.</span></span></Link>;
@@ -135,7 +135,7 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
   const groups = [
     { label: 'Инструкции', links: [
       { href: '/catalog', label: 'Каталог', current: active === 'catalog', Icon: LayoutGrid },
-      ...(aiEnabled ? [{ href: '/mentor', label: 'Artem.AI', current: active === 'mentor', Icon: MessageSquareText }] : []),
+      ...(aiEnabled ? [{ href: '/mentor', label: 'Alina.AI', current: active === 'mentor', Icon: MessageSquareText }] : []),
       { href: '/offline', label: 'Офлайн', current: false, Icon: Download },
     ] },
     { label: 'Аккаунт', links: [
@@ -199,7 +199,7 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
     {menu && <button className={styles.drawerShade} tabIndex={-1} aria-label="Закрыть навигацию" onClick={() => { setMenu(false); menuButton.current?.focus(); }} />}
     <aside id={sidebarId} aria-label="Сайдбар StepFlow" className={styles.sidebar} data-open={menu}>
       <div className={styles.sidebarBrand}><Logo href="/catalog" onClick={() => setMenu(false)} /></div>
-      <Link className={styles.createButton} href="/editor" title={collapsed ? 'Создать инструкцию' : undefined} onClick={() => setMenu(false)}>
+      <Link className={styles.createButton} aria-current={active === 'editor' ? 'page' : undefined} href="/editor" title={collapsed ? 'Создать инструкцию' : undefined} onClick={() => setMenu(false)}>
         <Plus size={18} aria-hidden="true" /><span>Создать инструкцию</span>
       </Link>
       <nav id={navigationId} aria-label="Навигация приложения">

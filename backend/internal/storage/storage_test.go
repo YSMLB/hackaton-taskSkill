@@ -105,6 +105,7 @@ func TestRegisterAndLogin(t *testing.T) {
 }
 
 func TestGuideSaveAndModerate(t *testing.T) {
+	t.Setenv("STEPFLOW_DEMO_DATA", "1")
 	store, cleanup := setupTestStorage(t)
 	defer cleanup()
 
@@ -122,18 +123,9 @@ func TestGuideSaveAndModerate(t *testing.T) {
 		t.Fatalf("author register failed: %v", err)
 	}
 
-	// Register Admin
-	regAdmin, _ := json.Marshal(map[string]any{
-		"type": "register",
-		"profile": map[string]any{
-			"email": "admin@test.ru",
-			"name":  "Админ Тест",
-			"role":  "Администратор",
-		},
-	})
-	_, adminToken, err := store.ChangeWorkspace("", regAdmin)
+	_, adminToken, err := store.ChangeWorkspace("", []byte(`{"type":"login","email":"admin@stepflow.test"}`))
 	if err != nil {
-		t.Fatalf("admin register failed: %v", err)
+		t.Fatalf("demo admin login: %v", err)
 	}
 
 	// Save guide

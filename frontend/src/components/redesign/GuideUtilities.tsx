@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { DeleteGuide } from './DeleteGuide';
 import { Download, FileDown } from 'lucide-react';
 import type { Instruction } from '@shared/community';
 import { downloadGuidePdf } from '@/lib/guide-pdf';
@@ -11,6 +13,7 @@ import { EmbedShare } from './EmbedShare';
 
 export function GuideUtilities({ guide }: { guide: Instruction }) {
   const { notify } = useStore();
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function run(offline: boolean) {
@@ -28,6 +31,7 @@ export function GuideUtilities({ guide }: { guide: Instruction }) {
     <div className="utility-actions">
       <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(false)}><FileDown size={17} aria-hidden="true" />Скачать PDF</button>
       {guide.status === 'published' && !guide.teamId && <button type="button" className="button button-outline" disabled={busy} onClick={() => void run(true)}><Download size={17} aria-hidden="true" />Сохранить офлайн</button>}
+      <DeleteGuide guide={guide} onDeleted={() => router.replace(guide.teamId ? `/team/overview?id=${guide.teamId}` : '/profile?tab=author')} />
     </div>
     {guide.status === 'published' && !guide.teamId && <EmbedShare id={guide.id} />}
     {error && <p className="field-error" role="alert">{error}</p>}

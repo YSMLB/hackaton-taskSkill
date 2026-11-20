@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { DeleteGuide } from './DeleteGuide';
 import { Suspense, useEffect, useId, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowLeft, ArrowUpRight, BarChart3, BookOpen, Check, ChevronLeft, ChevronRight, Clock, Copy, ListChecks, MessageCircle, MessageSquareText, Search, X } from 'lucide-react';
@@ -12,8 +13,8 @@ import { GuideCommunity, RatingLabel } from './GuideCommunity';
 import { StepComments } from './StepComments';
 import { MentorChat } from './MentorChat';
 import mentorStyles from './MentorChat.module.css';
-import { canView, isOwner, publicationLabels, voteSummary } from '@shared/community';
-import { searchScore } from '@shared/search';
+import { isAdmin, canView, isOwner, publicationLabels, voteSummary } from '@shared/community';
+import { hasSearchTerms, searchScore } from '@shared/search';
 import { GuideCover } from './GuideCover';
 import { StepMedia } from './StepMedia';
 import { GuideUtilities } from './GuideUtilities';
@@ -32,13 +33,17 @@ function WorkspaceContent({ screen }: { screen: Screen }) {
   const aiEnabled = useAiEnabled();
   const { data, ready, profile } = useStore();
   const id = params.get('id') || SAMPLE_ID;
-  const active = screen === 'moderation' ? 'moderation' : ['author', 'editor', 'analytics', 'moderation'].includes(screen) ? 'author' : screen === 'library' ? 'library' : 'catalog';
+  const active = screen === 'moderation' ? 'moderation' : screen === 'editor' ? 'editor' : ['author', 'analytics'].includes(screen) ? 'author' : screen === 'library' ? 'library' : 'catalog';
   const candidate = data.guides.find(g => g.id === id);
-  const guide = candidate && (candidate.teamId ? data.teams.some(team => team.id === candidate.teamId) : canView(candidate, profile)) ? candidate : undefined;
+  const guide = candidate && (candidate.teamId ? (candidate.status === 'pending' && isAdmin(profile)) || data.teams.some(team => team.id === candidate.teamId) : canView(candidate, profile)) ? candidate : undefined;
   const stepId = params.get('step');
+  if ((screen === 'guide' || screen === 'editor') && params.get('from') === 'team' && !guide) {
+    return <WorkShell active="team"><Empty title="Командная инструкция недоступна" text="Материал удалён или у тебя больше нет доступа к этой команде."
+      action={<Link href="/team" className="button button-dark">Мои команды</Link>} /></WorkShell>;
+  }
   if (screen === 'mentor') {
     const step = guide?.steps.find(item => item.id === stepId);
-    if (!aiEnabled) return <WorkShell active="mentor"><Empty title="Artem.AI отключён"
+    if (!aiEnabled) return <WorkShell active="mentor"><Empty title="Alina.AI отключена"
       text="Ты можешь вернуть функции ИИ в настройках сайта."
       action={<Link className="button button-dark" href="/profile?tab=settings">Открыть настройки</Link>} /></WorkShell>;
     return <WorkShell active="mentor">{guide?.status === 'published' && step
@@ -88,7 +93,7 @@ export function Catalog({ screen, embedded = false, initialAuthorFilter = 'all' 
   function changeQuery(value: string) { setQuery(value); setAiMessage(''); }
   function changeCategory(value: string) { setCategory(value); setAiMessage(''); }
   async function aiSearch() {
-    if (!aiSearchEnabled || !query.trim() || busy || !aiReady) return;
+    if (!aiSearchEnabled || !hasSearchTerms(query) || busy || !aiReady) return;
     const controller = new AbortController();
     requestRef.current?.abort(); requestRef.current = controller;
     setBusy(true); setAiMessage('');
@@ -97,8 +102,9 @@ export function Catalog({ screen, embedded = false, initialAuthorFilter = 'all' 
       const result = await response.json();
       if (controller.signal.aborted) return;
       if (!response.ok || !Array.isArray(result.ids)) { setAiResult(null); setAiMessage(result.message || 'ИИ-поиск недоступен. Показаны результаты поиска по словам.'); return; }
-      setAiResult({ query, catalog: catalogKey, ids: result.ids });
-      setAiMessage(result.ids.length ? 'Инструкции подобраны ИИ по твоему запросу.' : 'ИИ не нашёл подходящих инструкций. Попробуй уточнить задачу.');
+      const ids: string[] = result.ids;
+      setAiResult({ query, catalog: catalogKey, ids });
+      setAiMessage(ids.length ? 'Инструкции подобраны ИИ по твоему запросу.' : 'ИИ не нашёл подходящих инструкций. Попробуй уточнить задачу.');
     } catch (error) {
       if ((error as Error).name !== 'AbortError') { setAiResult(null); setAiMessage('Не удалось выполнить ИИ-поиск. Показаны результаты поиска по словам.'); }
     } finally { if (requestRef.current === controller) setBusy(false); }
@@ -120,13 +126,13 @@ export function Catalog({ screen, embedded = false, initialAuthorFilter = 'all' 
   const continueGuide = data.guides.find(g => data.runs[g.id] && data.runs[g.id].completed.length < g.steps.length && g.status === 'published');
   const heading = screen === 'author' ? 'Мои инструкции' : screen === 'library' ? 'Мои прохождения' : 'Каталог инструкций';
   return <>{!embedded && <div className="page-heading"><div><h1>{heading}</h1><p>{screen === 'author' ? 'Редактируй черновики и смотри результаты опубликованных инструкций.' : screen === 'library' ? 'Возвращайся к начатому и сохраняй сделанное.' : 'Найди инструкцию по названию, задаче или инструменту.'}</p></div></div>}
-    {screen === 'catalog' && continueGuide && <ContinueCard guide={continueGuide} />}
+    {screen === 'catalog' && !query.trim() && continueGuide && <ContinueCard guide={continueGuide} />}
     {screen === 'author' && <div className="category-filters author-guide-filters" role="group" aria-label="Тип моих инструкций">
       {authorFilters.map(filter => <button key={filter.id} type="button" className={authorFilter === filter.id ? 'active' : ''}
         aria-pressed={authorFilter === filter.id} onClick={() => setAuthorFilter(filter.id)}>{filter.label}</button>)}
     </div>}
-    <form className="catalog-tools" onSubmit={e => { e.preventDefault(); void aiSearch(); }}><label className="search-field"><Search size={19} /><input maxLength={500} aria-label="Поиск инструкций" placeholder="Название, задача или инструмент" value={query} onChange={e => changeQuery(e.target.value)} />{query && <button type="button" className="icon-button" onClick={() => changeQuery('')} aria-label="Очистить поиск"><X size={17} /></button>}</label>{aiSearchEnabled && <button type="submit" className="button button-dark ai-search-button" disabled={!aiReady || !query.trim() || busy}>{busy ? 'Ищем…' : 'Найти с ИИ'}</button>}</form>
-    {aiSearchEnabled && <div className="search-status" aria-live="polite">{aiMessage || (!aiReady ? 'ИИ-поиск пока не подключён. Работает поиск по словам и синонимам.' : 'Опиши задачу своими словами и нажми «Найти с ИИ».')}{currentAi && <button className="text-button" onClick={() => { setAiResult(null); setAiMessage(''); }}>Искать по словам</button>}</div>}
+    <form className="catalog-tools" onSubmit={e => { e.preventDefault(); void aiSearch(); }}><label className="search-field"><Search size={19} /><input maxLength={500} aria-label="Поиск инструкций" placeholder="Название, задача или инструмент" value={query} onChange={e => changeQuery(e.target.value)} />{query && <button type="button" className="icon-button" onClick={() => changeQuery('')} aria-label="Очистить поиск"><X size={17} /></button>}</label>{aiSearchEnabled && <button type="submit" className="button button-dark ai-search-button" disabled={!aiReady || !hasSearchTerms(query) || busy}>{busy ? 'Ищем…' : 'Найти с ИИ'}</button>}</form>
+    {aiSearchEnabled && <div className="search-status" aria-live="polite">{(query.trim() && !hasSearchTerms(query) ? 'Введи название или опиши задачу словами.' : aiMessage) || (!aiReady ? 'ИИ-поиск пока не подключён. Работает поиск по словам и синонимам.' : 'Опиши задачу своими словами и нажми «Найти с ИИ».')}{currentAi && <button className="text-button" onClick={() => { setAiResult(null); setAiMessage(''); }}>Искать по словам</button>}</div>}
     <div className="catalog-filter-row">
       <div className="category-filters">{categories.map(c => <button key={c} className={c === category ? 'active' : ''} aria-pressed={c === category} onClick={() => changeCategory(c)}>{c}</button>)}</div>
       <div className="catalog-filter-meta">
@@ -152,13 +158,18 @@ function ContinueCard({ guide }: { guide: Instruction }) {
 }
 function GuideCard({ guide: g, author }: { guide: Instruction; index: number; author: boolean }) {
   const { data } = useStore(); const run = data.runs[g.id];
-  return <article className="guide-card">{g.cover && <div className="guide-card-art" aria-hidden="true"><GuideCover cover={g.cover} /></div>}<div className="guide-card-body"><div className="card-labels"><span className="pill">{g.category}</span>{g.aiGenerated && <span className="pill">Создано с ИИ</span>}{g.source && <span className="pill fork-label">Форк</span>}{author && <span className={`status ${g.status}`}>{publicationLabels[g.status]}</span>}</div><h2><Link className="guide-card-open" href={`/${author ? 'editor' : 'guide'}?id=${g.id}`}>{g.title}</Link></h2><p>{g.description}</p>{g.source && <p className="card-source">Основано на «{g.source.title}»</p>}<div className="guide-card-badges"><RatingLabel id={g.id} /><VerifiedBadge guideId={g.id} /></div><div className="guide-meta"><span><ListChecks size={16} />{g.steps.length} шага</span><span><Clock size={16} />~{g.minutes} мин</span></div>{run && !author && <div className="card-progress"><span>{run.completed.length === g.steps.length ? 'Пройдено' : `Выполнено ${run.completed.length} из ${g.steps.length}`}</span><div className="progress-track"><span style={{ width: `${run.completed.length / g.steps.length * 100}%` }} /></div></div>}<div className="guide-card-footer"><span>{author ? 'Автор: ты' : g.author}</span><span className="round-link" aria-hidden="true"><ArrowUpRight size={19} /></span></div>{author && <Link className="analytics-link" href={`/analytics?id=${g.id}`}><BarChart3 size={16} />Статистика и вопросы</Link>}</div></article>;
+  return <article className="guide-card">{g.cover && <div className="guide-card-art" aria-hidden="true"><GuideCover cover={g.cover} /></div>}<div className="guide-card-body">{author && <div className="card-management">
+    <span className={`status ${g.status}`}>{publicationLabels[g.status]}</span>
+    <DeleteGuide guide={g} />
+  </div>}<div className="card-labels"><span className="pill">{g.category}</span>{g.aiGenerated && <span className="pill">Создано с ИИ</span>}{g.source && <span className="pill fork-label">Форк</span>}</div><h2><Link className="guide-card-open" href={`/${author ? 'editor' : 'guide'}?id=${g.id}`}>{g.title}</Link></h2><p>{g.description}</p>{g.source && <p className="card-source">Основано на «{g.source.title}»</p>}<div className="guide-card-badges"><RatingLabel id={g.id} /><VerifiedBadge guideId={g.id} /></div><div className="guide-meta"><span><ListChecks size={16} />{g.steps.length} шага</span><span><Clock size={16} />~{g.minutes} мин</span></div>{run && !author && <div className="card-progress"><span>{run.completed.length === g.steps.length ? 'Пройдено' : `Выполнено ${run.completed.length} из ${g.steps.length}`}</span><div className="progress-track"><span style={{ width: `${run.completed.length / g.steps.length * 100}%` }} /></div></div>}<div className="guide-card-footer"><span>{author ? 'Автор: ты' : g.author}</span><span className="round-link" aria-hidden="true"><ArrowUpRight size={19} /></span></div>{author && <Link className="analytics-link" href={`/analytics?id=${g.id}`}><BarChart3 size={16} />Статистика и вопросы</Link>}</div></article>;
 }
 function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?: boolean }) {
   const params = useSearchParams();
   const aiEnabled = useAiEnabled();
   const { data, send, pending, notify, profile } = useStore();
   const published = guide.status === 'published';
+  const canAskAuthor = guide.owned && guide.ownerId && !isOwner(guide, profile) &&
+    (!guide.teamId || data.teams.some(team => team.id === guide.teamId && team.memberIds.includes(guide.ownerId!)));
   const [preview, setPreview] = useState(defaultRun);
   const run = published ? data.runs[guide.id] || preview : preview;
   const [overview, setOverview] = useState(false);
@@ -166,36 +177,53 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
   const [report, setReport] = useState('');
   const [error, setError] = useState('');
   const [finished, setFinished] = useState(false);
+  const completionTitle = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (finished) {
+      completionTitle.current?.focus({ preventScroll: true });
+      completionTitle.current?.closest('section')?.scrollIntoView({ block: 'start' });
+    }
+  }, [finished]);
   const [mentorOpen, setMentorOpen] = useState(() => openMentor || params.get('mentor') === '1');
   const mentorId = useId();
   const mentorTrigger = useRef<HTMLButtonElement>(null);
   const [pendingCheck, setPendingCheck] = useState<{ stepId: string; index: number; checked: boolean } | null>(null);
-  const current = Math.min(run.current, guide.steps.length - 1);
+  const savedIndex = Math.min(run.current, guide.steps.length - 1);
+  const linkedStep = params.get('step');
+  // Reading an answer or comment should not move the reader's bookmark.
+  const [browsingStep, setBrowsingStep] = useState<string | null>(() =>
+    openMentor || (data.runs[guide.id] && guide.steps[savedIndex]?.id === linkedStep) ? null : linkedStep);
+  const browsingIndex = guide.steps.findIndex(item => item.id === browsingStep);
+  const readingLink = published && browsingStep !== null;
+  const current = readingLink && browsingIndex >= 0 ? browsingIndex : savedIndex;
   const step = guide.steps[current];
   const questions = (data.myQuestions ?? []).filter(question => question.guideId === guide.id && question.stepId === step?.id);
-  const hasQuestions = questions.length > 0;
-  const linkedStep = params.get('step');
-  const currentStepId = step?.id;
   useEffect(() => {
-    if (hasQuestions && currentStepId === linkedStep && location.hash === '#author-questions') {
-      document.getElementById('author-questions')?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [hasQuestions, currentStepId, linkedStep]);
-  const initialVisit = useRef(false);
+    if (linkedStep && step?.id !== linkedStep) return;
+    const anchor = location.hash.slice(1);
+    if (anchor) document.getElementById(anchor)?.scrollIntoView({ block: 'nearest' });
+  }, [linkedStep, step?.id]);
+  const initialVisit = useRef(Boolean(linkedStep && !openMentor));
   function closeMentor() {
     setMentorOpen(false);
     mentorTrigger.current?.focus();
   }
   useEffect(() => {
-    if (!published || !step || initialVisit.current) return;
+    if (!published || !step || initialVisit.current || readingLink) return;
     initialVisit.current = true;
     const target = guide.steps.find(item => item.id === params.get('step')) ?? step;
     void send({ type: 'visit', guideId: guide.id, stepId: target.id });
-  }, [published, send, guide.id, guide.steps, params, step]);
+  }, [published, readingLink, send, guide.id, guide.steps, params, step]);
+  async function resumeHere() {
+    if (pending || !step) return;
+    initialVisit.current = true;
+    if (await send({ type: 'visit', guideId: guide.id, stepId: step.id })) setBrowsingStep(null);
+  }
   function goTo(index: number) {
     const next = guide.steps[index];
     if (!next || pending) return;
-    if (published) void send({ type: 'visit', guideId: guide.id, stepId: next.id });
+    if (readingLink) setBrowsingStep(next.id);
+    else if (published) void send({ type: 'visit', guideId: guide.id, stepId: next.id });
     else setPreview({ ...run, current: index });
     setOverview(false); setError(''); setShowHelp(false); setReport('');
   }
@@ -235,7 +263,21 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
   if (!step) return <Empty title="В этой инструкции ещё нет шагов" text="Вернись в каталог и выбери другой материал." />;
   if (!canView(guide, profile)) return <Empty title="Инструкция пока не опубликована" text="Выбери другой материал в каталоге." />;
 
-  if (finished) return <div className="completion"><span className="completion-mark"><Check size={36} /></span><span className="section-label">Всё получилось</span><h1>Ещё одно дело завершено.</h1><p>Все шаги «{guide.title}» отмечены. Инструкция останется в твоих прохождениях.</p><div className="hero-actions"><Link className="button button-red" href="/library">Мои прохождения</Link><button className="button button-outline" onClick={() => setFinished(false)}>Посмотреть шаги</button></div><GuideUtilities guide={guide} /><GuideCommunity guide={guide} /></div>;
+  if (finished) return <div className="completion">
+    <section className="completion-summary" aria-labelledby="completion-title">
+      <div className="completion-heading">
+        <span className="completion-mark" aria-hidden="true"><Check size={24} /></span>
+        <div><h1 id="completion-title" ref={completionTitle} tabIndex={-1}>Инструкция пройдена</h1>
+          <p>{guide.title}</p></div>
+      </div>
+      <div className="completion-navigation">
+        <Link className="button button-red" href="/library">Мои прохождения</Link>
+        <button type="button" className="button button-outline" onClick={() => setFinished(false)}>Посмотреть шаги</button>
+      </div>
+      <GuideUtilities guide={guide} />
+    </section>
+    <GuideCommunity guide={guide} />
+  </div>;
   return <>
     <div className="player-heading">
       <Link className="back-link" href="/catalog"><ArrowLeft size={17} />Каталог</Link>
@@ -273,6 +315,11 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
             <div><span>{step.filename || 'Команда'}</span><button onClick={copy}><Copy size={15} />Копировать</button></div>
             <pre><code>{step.code}</code></pre>
           </div>}
+          {readingLink && <div className="help-form">
+            <p>{browsingIndex < 0 ? 'Шаг из уведомления больше недоступен.' : 'Ты просматриваешь шаг из уведомления.'}
+              {data.runs[guide.id] && ` Твоё место — шаг ${savedIndex + 1}.`}</p>
+            <button className="button button-outline" disabled={pending} onClick={() => void resumeHere()}>Продолжить отсюда</button>
+          </div>}
           <div className="checklist-heading">
             <h3>Проверь перед следующим шагом</h3>
             <span>{step.checks.filter((_, index) => checkedAt(index)).length} из {step.checks.length}</span>
@@ -281,7 +328,7 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
             key={`${step.id}-${index}`}
             className={checkedAt(index) ? 'is-checked' : ''}
           >
-            <input type="checkbox" checked={checkedAt(index)} disabled={pending} onChange={event => void toggleCheck(index, event.target.checked)} />
+            <input type="checkbox" checked={checkedAt(index)} disabled={pending || readingLink} onChange={event => void toggleCheck(index, event.target.checked)} />
             <span>{text}</span>
           </label>)}</div>
           {published && <div className={mentorStyles.stepHelp}>
@@ -290,11 +337,11 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
               onClick={() => mentorOpen ? closeMentor() : setMentorOpen(true)}>
               <MessageSquareText size={18} aria-hidden="true" />Я застрял на этом шаге
             </button>}
-            <button type="button" className="text-button help-trigger" aria-expanded={showHelp} onClick={() => setShowHelp(!showHelp)}>
+            {canAskAuthor && <button type="button" className="text-button help-trigger" aria-expanded={showHelp} onClick={() => setShowHelp(!showHelp)}>
               <MessageCircle size={18} aria-hidden="true" />Спросить автора
-            </button>
+            </button>}
           </div>}
-          {showHelp && <form className="help-form" onSubmit={async event => {
+          {canAskAuthor && showHelp && <form className="help-form" onSubmit={async event => {
             event.preventDefault();
             if (!report.trim() || pending) return;
             if (await send({ type: 'help', guideId: guide.id, stepId: step.id, text: report })) {
@@ -311,7 +358,7 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
           </form>}
           {published && questions.length > 0 && <section id="author-questions" className="help-form" aria-label="Твои вопросы автору">
             <h3>Твои вопросы автору</h3>
-            <ul className="mt-3 space-y-4">{questions.map(question => <li key={question.id}>
+            <ul className="mt-3 space-y-4">{questions.map(question => <li key={question.id} id={`answer-${question.id}`}>
               <p className="whitespace-pre-wrap wrap-anywhere">{question.text}</p>
               {question.reply ? <div className="mt-1 border-l-2 border-[var(--accent-border)] pl-3">
                 <strong>Ответ автора</strong>
@@ -324,7 +371,7 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
             <button className="button button-outline" disabled={current === 0 || pending} onClick={() => goTo(current - 1)}>
               <ChevronLeft size={18} />Назад
             </button>
-            <button className="button button-dark" disabled={pending} onClick={advance}>
+            <button className="button button-dark" disabled={pending || readingLink} onClick={advance}>
               {current === guide.steps.length - 1 ? 'Завершить инструкцию' : 'Шаг выполнен'}<ChevronRight size={18} />
             </button>
           </div>

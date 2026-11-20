@@ -148,9 +148,17 @@
 }
 @media(max-width: 540px) {
   .landingFooter { --dock-height: 64px; }
-  .landingLogin { display: none; }
+  .dockBar .landingLogin, .gateHeader .landingLogin {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: .875rem;
+  }
+  .dockBar :global(.header-cta svg), .gateHeader :global(.header-cta svg) { display: none; }
 }
-@media (max-width: 380px) {
+@media (max-width: 440px) {
+  .dockBar .brandName, .gateHeader .brandName { display: none; }
+  .dockBar :global(.brand-mark), .gateHeader :global(.brand-mark) { margin-right: 0; }
   .dockBar :global(.brand) { font-size: 1.25rem; }
   .dockBar :global(.brand-mark) { width: 25px; height: 28px; }
 }

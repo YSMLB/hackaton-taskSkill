@@ -11,7 +11,7 @@ import (
 
 func moderationDecision(id string, guide models.Instruction) models.ModerationDecision {
 	return models.ModerationDecision{
-		ID: id, Title: guide.Title, Author: guide.Author, Reviewer: guide.ReviewedBy,
+		ID: id, GuideID: guide.ID, Revision: guide.Revision, Title: guide.Title, Author: guide.Author, Reviewer: guide.ReviewedBy,
 		Approved: guide.Status == models.StatusPublished, Note: guide.ModerationNote, CreatedAt: guide.ReviewedAt,
 	}
 }
@@ -30,7 +30,7 @@ func visible(state *models.State, guide models.Instruction, profile *models.Prof
 	if guide.TeamID == "" {
 		return models.CanView(guide, profile)
 	}
-	return profile != nil && memberTeam(state, guide.TeamID, models.ActorID(*profile)) != nil
+	return (guide.Status == models.StatusPending && models.IsAdmin(profile)) || (profile != nil && memberTeam(state, guide.TeamID, models.ActorID(*profile)) != nil)
 }
 
 func notify(state *models.State, recipient, actor, text, href string) {
@@ -41,8 +41,27 @@ func notify(state *models.State, recipient, actor, text, href string) {
 		state.Notices = make(map[string][]models.Notice)
 	}
 	notice := models.Notice{ID: RandomUUID(), Text: text, Href: href, CreatedAt: time.Now().UTC().Format(time.RFC3339)}
-	previous := state.Notices[recipient]
-	state.Notices[recipient] = append([]models.Notice{notice}, previous[:min(len(previous), 199)]...)
+	state.Notices[recipient] = trimReadHistory(append([]models.Notice{notice}, state.Notices[recipient]...))
+}
+
+// Keep the latest 200 entries and every older notice the recipient still hasn't read.
+func trimReadHistory(notices []models.Notice) []models.Notice {
+	const recent = 200
+	if len(notices) <= recent {
+		return notices
+	}
+	unread := slices.DeleteFunc(notices[recent:], func(n models.Notice) bool { return n.Read })
+	return notices[:recent+len(unread)]
+}
+
+func notifyTeam(state *models.State, team *models.Team, actor, message, href string) {
+	for _, id := range team.MemberIDs {
+		notify(state, id, actor, message, href)
+	}
+}
+
+func canReceiveGuideNotice(state *models.State, guide *models.Instruction, id string) bool {
+	return id != "" && (guide.TeamID == "" || memberTeam(state, guide.TeamID, id) != nil)
 }
 
 func mediaURL(raw any) string {
@@ -76,15 +95,33 @@ func changeAccount(state *models.State, profile *models.Profile, kind string, co
 			state.AutoModeration = enabled
 			state.ModerationEpoch++
 		}
+	case "start-plus-trial":
+		requireCondition(!profile.PlusTrialUsed && (profile.Plan == "" || profile.Plan == "free"), "Пробный Plus доступен один раз на бесплатном тарифе.", 409)
+		now := time.Now().UTC()
+		next := time.Date(now.Year(), now.Month()+1, 1, now.Hour(), now.Minute(), now.Second(), now.Nanosecond(), time.UTC)
+		lastDay := next.AddDate(0, 1, -1).Day()
+		profile.PlusTrialEndsAt = next.AddDate(0, 0, min(now.Day(), lastDay)-1).UnixMilli()
+		profile.PlusTrialUsed = true
+		profile.Plan = "standard"
+		state.Accounts[actor] = *profile
 	case "plan":
 		plan := textValidation(command["plan"], 20, true)
 		requireCondition(plan == "standard" || plan == "business" || plan == "free", "Выбери тариф.")
+		profile.PlusTrialEndsAt = 0
 		profile.Plan = plan
 		state.Accounts[actor] = *profile
 		for i := range state.Teams {
-			if state.Teams[i].OwnerID == actor {
-				state.Teams[i].Active = plan == "business"
+			team := &state.Teams[i]
+			active := plan == "business"
+			if team.OwnerID != actor || team.Active == active {
+				continue
 			}
+			team.Active = active
+			message := "Команда «" + team.Name + "» перешла в режим чтения"
+			if active {
+				message = "В команде «" + team.Name + "» снова можно редактировать инструкции"
+			}
+			notifyTeam(state, team, actor, message, "/team/overview?id="+team.ID)
 		}
 	case "expert":
 		requireCondition(models.IsAdmin(profile), "Назначать экспертов может администратор.", 403)
@@ -117,23 +154,44 @@ func changeAccount(state *models.State, profile *models.Profile, kind string, co
 	case "team-member":
 		team := memberTeam(state, validateGuideID(command["teamId"]), actor)
 		requireCondition(team != nil && team.Active && team.OwnerID == actor, "Изменять состав может владелец активной команды.", 403)
-		member := findAccount(state, textValidation(command["email"], 254, true))
-		requireCondition(member != nil && models.ActorID(*member) != actor, "Укажи email другого участника.")
-		id := models.ActorID(*member)
+		var id string
+		if command["remove"] == true && command["memberId"] != nil {
+			id = textValidation(command["memberId"], 300, true)
+			requireCondition(id != actor && slices.Contains(team.MemberIDs, id), "Участника нет в команде или это её владелец.")
+		} else {
+			member := findAccount(state, textValidation(command["email"], 254, true))
+			requireCondition(member != nil && models.ActorID(*member) != actor, "Укажи email другого участника.")
+			id = models.ActorID(*member)
+		}
 		index := slices.Index(team.MemberIDs, id)
 		if command["remove"] == true {
 			if index >= 0 {
 				team.MemberIDs = slices.Delete(team.MemberIDs, index, index+1)
+				notify(state, id, actor, "Тебя удалили из команды «"+team.Name+"»", "/team")
 			}
 		} else if index < 0 {
 			team.MemberIDs = append(team.MemberIDs, id)
-			notify(state, id, actor, "Тебя добавили в команду «"+team.Name+"»", "/team")
+			notify(state, id, actor, "Тебя добавили в команду «"+team.Name+"»", "/team/overview?id="+team.ID)
 		}
 	case "notices-read":
+		var selected map[string]bool
+		if rawIDs, present := command["ids"]; present {
+			ids, ok := rawIDs.([]any)
+			requireCondition(ok, "Передай список уведомлений.")
+			selected = make(map[string]bool, len(ids))
+			for _, raw := range ids {
+				selected[textValidation(raw, 300, true)] = true
+			}
+		} else if id := command["id"]; id != nil {
+			selected = map[string]bool{textValidation(id, 300, true): true}
+		}
 		for i, n := range state.Notices[actor] {
-			if command["id"] == nil || command["id"] == n.ID {
+			if selected == nil || selected[n.ID] {
 				state.Notices[actor][i].Read = true
 			}
+		}
+		if state.Notices != nil {
+			state.Notices[actor] = trimReadHistory(state.Notices[actor])
 		}
 	default:
 		return false

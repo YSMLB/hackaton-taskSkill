@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/start.mjs dev",
+    "dev": "node scripts/start.mjs dev --webpack",
     "build": "next build frontend --webpack",
     "start": "node scripts/start.mjs start",
     "lint": "eslint",

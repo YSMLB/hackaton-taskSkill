@@ -3,6 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"stepflow/backend/internal/models"
+	"strings"
 	"time"
 )
 
@@ -17,10 +18,38 @@ func (s *Storage) seedDemo() error {
 	if err != nil {
 		return err
 	}
-	for _, guide := range state.Guides {
-		if guide.ID == "demo-v1-published" {
-			return nil
+	if _, seeded := state.Accounts["demo-v1-admin"]; seeded {
+		// Only migrate the original fixture and its generated labels, preserving user edits.
+		const oldTitle = "Демо · Собрать презентацию с Artem.AI"
+		const newTitle = "Демо · Собрать презентацию с Alina.AI"
+		changed := false
+		for i, g := range state.Guides {
+			if g.ID == "demo-v1-pending" && g.Title == oldTitle {
+				state.Guides[i].Title = newTitle
+				changed = true
+			}
 		}
+		for i, d := range state.ModerationDecisions {
+			if d.GuideID == "demo-v1-pending" && d.Title == oldTitle {
+				state.ModerationDecisions[i].Title = newTitle
+				changed = true
+			}
+		}
+		for _, notices := range state.Notices {
+			for i, n := range notices {
+				if strings.Contains(n.Text, "«"+oldTitle+"»") {
+					notices[i].Text = strings.ReplaceAll(n.Text, "«"+oldTitle+"»", "«"+newTitle+"»")
+					changed = true
+				}
+			}
+		}
+		if changed {
+			if err := saveState(tx, state); err != nil {
+				return err
+			}
+			return tx.Commit()
+		}
+		return nil
 	}
 	profiles := []models.Profile{
 		{ID: "demo-v1-admin", Name: "Демо Администратор", Email: "admin@stepflow.test", Role: "Администратор", Plan: "business"},
@@ -49,13 +78,13 @@ func (s *Storage) seedDemo() error {
 		ai        bool
 	}{
 		{"published", "Демо · Подготовить учебную презентацию", models.StatusPublished, false},
-		{"pending", "Демо · Собрать презентацию с Artem.AI", models.StatusPending, true},
+		{"pending", "Демо · Собрать презентацию с Alina.AI", models.StatusPending, true},
 		{"pending-2", "Демо · Провести командную репетицию", models.StatusPending, false},
 		{"rejected", "Демо · Оформить список источников", models.StatusRejected, false},
 		{"draft", "Демо · Подготовить ответы жюри", models.StatusDraft, false},
 	}
 	for _, e := range examples {
-		g := models.Instruction{ID: "demo-v1-" + e.id, Title: e.title, Description: "Учебный пример для проверки интерфейса и ролей.", Category: "Учёба", Minutes: 15, Author: profiles[1].Name, OwnerID: profiles[1].ID, Status: e.status, Steps: steps, Revision: 1, AIGenerated: e.ai}
+		g := models.Instruction{ID: "demo-v1-" + e.id, Title: e.title, Description: "Учебный пример для проверки интерфейса и ролей.", Category: "Учёба", Minutes: 15, Author: profiles[1].Name, OwnerID: profiles[1].ID, Owned: true, Status: e.status, Steps: steps, Revision: 1, AIGenerated: e.ai}
 		if e.status != models.StatusDraft {
 			g.SubmittedAt = stamp
 		}
@@ -91,8 +120,13 @@ func (s *Storage) seedDemo() error {
 		state.Notices = make(map[string][]models.Notice)
 	}
 	for _, p := range profiles {
+		recent := models.Notice{ID: "demo-v1-notice-" + p.ID, Text: teamGuide.Title, Href: "/guide?id=" + teamGuide.ID + "&from=team", CreatedAt: stamp}
+		if models.IsAdmin(&p) {
+			recent.Text = "На проверку: «Демо · Собрать презентацию с Alina.AI»"
+			recent.Href = "/moderation?guide=demo-v1-pending&revision=1"
+		}
 		state.Notices[p.ID] = []models.Notice{
-			{ID: "demo-v1-notice-" + p.ID, Text: "Демо · Команда подготовила новую инструкцию", Href: "/team", CreatedAt: stamp},
+			recent,
 			{ID: "demo-v1-read-" + p.ID, Text: "Демо · Учебные данные готовы к проверке", Href: "/catalog", CreatedAt: stamp, Read: true},
 		}
 	}

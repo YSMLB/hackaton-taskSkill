@@ -121,6 +121,10 @@ func New(dbPath string) (*Storage, error) {
 			return nil, err
 		}
 	}
+	if err := store.queueUnreviewedTeamPublications(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return store, nil
 }
 
@@ -165,7 +169,21 @@ func (s *Storage) loadState(tx *sql.Tx) (*models.State, error) {
 		return nil, err
 	}
 
+	now := time.Now().UnixMilli()
+	for id, account := range state.Accounts {
+		if account.PlusTrialEndsAt > 0 && account.PlusTrialEndsAt <= now {
+			account.PlusTrialEndsAt = 0
+			account.Plan = "free"
+			state.Accounts[id] = account
+		}
+	}
+
 	for i := range state.Guides {
+		// Early demo fixtures had an owner ID but lacked the ownership flag.
+		guide := &state.Guides[i]
+		if guide.OwnerID == "demo-v1-member" && strings.HasPrefix(guide.ID, "demo-v1-") {
+			guide.Owned = true
+		}
 		for j := range state.Guides[i].Steps {
 			if state.Guides[i].Steps[j].Checks == nil {
 				state.Guides[i].Steps[j].Checks = []string{}
@@ -263,6 +281,46 @@ func textValidation(val any, maxLen int, required bool) string {
 	clean := strings.TrimSpace(str)
 	requireCondition(!required || clean != "", "Заполни обязательные поля.")
 	return clean
+}
+
+const freeGuideLimit = 10
+
+func requirePersonalSlot(state *models.State, profile *models.Profile) {
+	if profile.Plan == "standard" || profile.Plan == "business" {
+		return
+	}
+	count := 0
+	for _, g := range state.Guides {
+		if g.TeamID == "" && models.IsOwner(g, profile) {
+			count++
+		}
+	}
+	requireCondition(count < freeGuideLimit, "На бесплатном тарифе можно сохранить до 10 личных инструкций. Удали одну или подключи Plus в разделе «Подписки».", 409)
+}
+
+func deleteGuide(state *models.State, id string) {
+	state.Guides = slices.DeleteFunc(state.Guides, func(g models.Instruction) bool { return g.ID == id })
+	delete(state.Runs, id)
+	delete(state.Votes, id)
+	delete(state.AutoReviews, id)
+	state.Comments = slices.DeleteFunc(state.Comments, func(c models.StepComment) bool { return c.GuideID == id })
+	state.Reports = slices.DeleteFunc(state.Reports, func(r models.Report) bool { return r.GuideID == id })
+	state.Reviews = slices.DeleteFunc(state.Reviews, func(r models.ExpertReview) bool { return r.GuideID == id })
+	for actor, notices := range state.Notices {
+		state.Notices[actor] = slices.DeleteFunc(notices, func(n models.Notice) bool {
+			link, err := url.Parse(n.Href)
+			if err != nil {
+				return false
+			}
+			switch link.Path {
+			case "/moderation":
+				return link.Query().Get("guide") == id
+			case "/guide", "/editor", "/analytics":
+				return link.Query().Get("id") == id
+			}
+			return false
+		})
+	}
 }
 
 func validateGuideID(val any) string {
@@ -531,6 +589,26 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 			}
 		}
 		notices = append(notices, state.Notices[actor]...)
+		for i, notice := range notices {
+			// Old moderation notices identify the document by URL but omit its title.
+			if notice.Text == "Инструкцию вернули на доработку" || notice.Text == "Инструкция опубликована" {
+				id := strings.TrimPrefix(notice.Href, "/editor?id=")
+				for _, guide := range viewableGuides {
+					if guide.ID == id {
+						notices[i].Text += ": «" + guide.Title + "»"
+						break
+					}
+				}
+			}
+			if notice.ID == "demo-v1-notice-"+actor && notice.Href == "/team" && notice.Text == "Демо · Команда подготовила новую инструкцию" {
+				notices[i].Href = "/guide?id=demo-v1-team-guide&from=team"
+				notices[i].Text = "Демо · Подготовка команды к защите"
+				if actor == "demo-v1-admin" {
+					notices[i].Text = "Демо · История проверок"
+					notices[i].Href = "/moderation?tab=history"
+				}
+			}
+		}
 		for _, report := range state.Reports {
 			if report.AuthorID == actor && publicIDs[report.GuideID] {
 				myQuestions = append(myQuestions, report)
@@ -592,6 +670,13 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 	if models.IsAdmin(profile) {
 		autoModeration = &state.AutoModeration
 		moderation = &models.ModerationData{ManualReviewNotes: map[string]string{}, Decisions: state.ModerationDecisions, Experts: []models.ExpertSummary{}}
+		for _, g := range state.Guides {
+			metrics, ok := analytics[g.ID]
+			if !ok {
+				metrics = computeMetrics(state, g)
+			}
+			moderation.Posts = append(moderation.Posts, models.PostStats{ID: g.ID, Title: g.Title, Started: metrics.Started, Completed: metrics.Completed, Reports: metrics.Reports})
+		}
 		if state.AutoModeration && !provider.Configured() {
 			moderation.PausedReason = "Автопроверка приостановлена. Проверьте настройки ИИ-сервиса на сервере."
 		}
@@ -854,6 +939,10 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 
 			}
 
+			if previous == nil {
+				requireCondition(command["updateOnly"] != true && rawGuide["revision"] == nil, "Инструкция больше недоступна.", 404)
+			}
+
 			var teamID string
 			if previous != nil {
 				teamID = previous.TeamID
@@ -871,6 +960,9 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			}
 			id := requested
 			if previous == nil {
+				if team == nil {
+					requirePersonalSlot(state, current)
+				}
 				id = RandomUUID()
 			}
 
@@ -879,17 +971,18 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			guide.Revision = revision
 			if team != nil {
 				guide.TeamID = team.ID
-				if submit {
-					guide.Status = models.StatusPublished
-				}
 				if previous != nil {
 					guide.OwnerID, guide.Author = previous.OwnerID, previous.Author
 				}
-				for _, recipient := range team.MemberIDs {
-					notify(state, recipient, actor, "В команде обновлена инструкция «"+guide.Title+"»", "/team")
-				}
 			}
 
+			if submit {
+				message := "На проверку поступила инструкция"
+				if previous != nil && previous.Status == models.StatusPending {
+					message = "Автор обновил инструкцию на проверке"
+				}
+				notifyModerators(state, &guide, actor, message)
+			}
 			if previous != nil {
 				delete(state.AutoReviews, id)
 				state.Guides[prevIndex] = guide
@@ -927,6 +1020,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 					continue
 				}
 
+				requirePersonalSlot(state, current)
 				newID := RandomUUID()
 				g := parseGuide(incomingMap, current, nil, false, newID)
 				state.Guides = append([]models.Instruction{g}, state.Guides...)
@@ -947,6 +1041,21 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		}
 
 		requireCondition(guide != nil && visible(state, *guide, current), "Инструкция недоступна.", 404)
+
+		if cmdType == "delete-guide" {
+			allowed := models.IsOwner(*guide, current)
+			if guide.TeamID != "" {
+				team := memberTeam(state, guide.TeamID, actor)
+				allowed = team != nil && team.Active && (allowed || team.OwnerID == actor)
+			}
+			requireCondition(allowed, "Удалить инструкцию может автор или владелец команды.", 403)
+			requireCondition(command["revision"] == float64(guide.Revision) && command["status"] == string(guide.Status), "Инструкция изменилась. Обнови страницу перед удалением.", 409)
+			if team := memberTeam(state, guide.TeamID, actor); team != nil && guide.Status == models.StatusPublished {
+				notifyTeam(state, team, actor, "В команде удалена инструкция «"+guide.Title+"»", "/team/overview?id="+team.ID)
+			}
+			deleteGuide(state, key)
+			break
+		}
 
 		if cmdType == "moderate" {
 			requireCondition(models.IsAdmin(current), "Решение принимает администратор.", 403)
@@ -973,12 +1082,15 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			report := &state.Reports[index]
 			report.Reply = textValidation(command["text"], 2000, true)
 			query := url.Values{"id": {key}, "step": {report.StepID}}
-			notify(state, report.AuthorID, actor, "Автор ответил на вопрос: "+report.Reply, "/guide?"+query.Encode()+"#author-questions")
+			if canReceiveGuideNotice(state, guide, report.AuthorID) {
+				notify(state, report.AuthorID, actor, "Ответ на вопрос по инструкции «"+guide.Title+"»: "+report.Reply, "/guide?"+query.Encode()+"#answer-"+report.ID)
+			}
 			break
 		}
 
 		if cmdType == "fork" {
 			requireCondition(guide.TeamID == "", "Командная инструкция доступна внутри команды.", 403)
+			requirePersonalSlot(state, current)
 			outID = RandomUUID()
 			title := guide.Title
 			if len([]rune(title)) > 230 {
@@ -1011,6 +1123,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 				Steps: forkedSteps,
 			}
 
+			notify(state, guide.OwnerID, actor, "По твоей инструкции «"+guide.Title+"» создали форк", "/guide?id="+key)
 			state.Guides = append([]models.Instruction{forkedGuide}, state.Guides...)
 			break
 		}
@@ -1025,6 +1138,9 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 				delete(state.Votes[key], actor)
 			} else {
 				state.Votes[key][actor] = models.Vote(val)
+				if canReceiveGuideNotice(state, guide, guide.OwnerID) {
+					notify(state, guide.OwnerID, actor, "Новая оценка инструкции «"+guide.Title+"»", "/guide?id="+key)
+				}
 			}
 			break
 		}
@@ -1051,7 +1167,7 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 				}
 			}
 			state.Reviews = append([]models.ExpertReview{review}, newReviews...)
-			notify(state, guide.OwnerID, actor, "Эксперт оставил рецензию", "/guide?id="+key)
+			notify(state, guide.OwnerID, actor, "Рецензия на инструкцию «"+guide.Title+"»", "/guide?id="+key+"#expert-reviews")
 			break
 		}
 
@@ -1075,7 +1191,18 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			entryID := RandomUUID()
 
 			if cmdType == "comment" {
-				notify(state, guide.OwnerID, actor, "Новый комментарий к шагу «"+step.Title+"»", "/guide?id="+key)
+				recipients := map[string]bool{guide.OwnerID: true}
+				for _, comment := range state.Comments {
+					if comment.GuideID == key && comment.StepID == step.ID {
+						recipients[comment.AuthorID] = true
+					}
+				}
+				href := "/guide?" + url.Values{"id": {key}, "step": {step.ID}}.Encode() + "#comment-" + entryID
+				for recipient := range recipients {
+					if canReceiveGuideNotice(state, guide, recipient) {
+						notify(state, recipient, actor, "Комментарий к «"+guide.Title+"», шаг «"+step.Title+"»", href)
+					}
+				}
 				state.Comments = append(state.Comments, models.StepComment{
 					ID:         entryID,
 					GuideID:    key,
@@ -1086,7 +1213,8 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 					CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 				})
 			} else {
-				notify(state, guide.OwnerID, actor, "Новый вопрос к шагу «"+step.Title+"»", "/analytics?id="+key)
+				requireCondition(guide.Owned && canReceiveGuideNotice(state, guide, guide.OwnerID), "Автор недоступен. Можно написать в комментариях к шагу.", 409)
+				notify(state, guide.OwnerID, actor, "Вопрос по инструкции «"+guide.Title+"», шаг «"+step.Title+"»", "/analytics?id="+key+"#question-"+entryID)
 				state.Reports = append(state.Reports, models.Report{
 					ID:       entryID,
 					GuideID:  key,

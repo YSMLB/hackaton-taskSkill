@@ -53,8 +53,8 @@ export function SiteSettings() {
     <dialog ref={dialog} className={styles.aiDialog} aria-labelledby={titleId} aria-describedby={descriptionId}>
       <h2 id={titleId}>Отключить ИИ?</h2>
       <div id={descriptionId}>
-        <p>Если застрянешь, «Artem.AI» сможет подсказать, что проверить. Он уже видит текущий шаг, поэтому пересказывать инструкцию не придётся.</p>
-        <p>Отключатся «Artem.AI», ИИ-поиск и генерация черновиков. Обычный поиск и ручной редактор продолжат работать. Вернуть ИИ можно здесь же.</p>
+        <p>Если застрянешь, «Alina.AI» сможет подсказать, что проверить. Она уже видит текущий шаг, поэтому пересказывать инструкцию не придётся.</p>
+        <p>Отключатся «Alina.AI», ИИ-поиск и генерация черновиков. Обычный поиск и ручной редактор продолжат работать. Вернуть ИИ можно здесь же.</p>
       </div>
       <div className={styles.aiDialogActions}>
         <button type="button" className="button button-outline" onClick={() => dialog.current?.close()}>Оставить включённым</button>

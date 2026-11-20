@@ -28,7 +28,7 @@ export function StepComments({ guideId, stepId }: { guideId: string; stepId: str
       <h3 id={headingId} className={styles.title}><MessageCircle size={19} aria-hidden="true" />Комментарии к шагу</h3>
       <span className={styles.count} aria-label={`Всего комментариев: ${comments.length}`}>{comments.length}</span>
     </div>
-    {comments.length ? <ol className={styles.list}>{comments.map(comment => <li className={styles.comment} key={comment.id}>
+    {comments.length ? <ol className={styles.list}>{comments.map(comment => <li className={styles.comment} key={comment.id} id={`comment-${comment.id}`}>
       <span className={styles.avatar} aria-hidden="true">{Array.from(comment.authorName)[0]?.toLocaleUpperCase('ru')}</span>
       <div className={styles.body}>
         <div className={styles.meta}><strong>{comment.authorName}</strong><time dateTime={comment.createdAt}>{dateFormat.format(new Date(comment.createdAt))}</time></div>

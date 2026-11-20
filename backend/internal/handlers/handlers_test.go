@@ -122,15 +122,15 @@ func TestHandlersFlow(t *testing.T) {
 		t.Fatalf("expected 401 unauthorized without cookie, got %d", w.Code)
 	}
 
-	// 8. Test AI Generate with Learner role (should return 403)
+	// 8. A learner can generate drafts when the provider is configured
 	genReq = httptest.NewRequest(http.MethodPost, "/api/ai/generate-guide", bytes.NewReader([]byte(`{"prompt":"Deploy Docker"}`)))
 	genReq.Header.Set("Content-Type", "application/json")
 	genReq.Header.Set("Sec-Fetch-Site", "same-origin")
 	genReq.AddCookie(sessionCookie)
 	w = httptest.NewRecorder()
 	srv.HandleGenerateGuide(w, genReq)
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 forbidden for learner, got %d", w.Code)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for learner with unconfigured provider, got %d", w.Code)
 	}
 
 	// 9. Register Author & test AI Generate when unconfigured (should return 503)

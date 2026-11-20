@@ -1,7 +1,7 @@
 export type PublicationStatus = 'draft' | 'pending' | 'published' | 'rejected';
 export type Vote = 'helpful' | 'unhelpful';
 export type Plan = 'free' | 'standard' | 'business';
-export interface Profile { id?: string; name: string; email: string; role: string; plan?: Plan; avatar?: string; bio?: string }
+export interface Profile { id?: string; name: string; email: string; role: string; plan?: Plan; plusTrialUsed?: boolean; plusTrialEndsAt?: number; avatar?: string; bio?: string }
 export interface Step { id: string; title: string; text: string; code?: string; filename?: string; checks: string[]; imageUrl?: string; videoUrl?: string }
 export interface StepComment { id: string; guideId: string; stepId: string; authorId: string; authorName: string; text: string; createdAt: string }
 export interface Instruction {

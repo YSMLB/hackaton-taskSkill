@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { DeleteGuide } from './DeleteGuide';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { ArrowLeft, ChevronRight, FileText, Plus } from 'lucide-react';
@@ -24,7 +25,7 @@ export function TeamOverview() {
 
 function Overview({ userId }: { userId: string }) {
   const id = useSearchParams().get('id');
-  const { data } = useStore();
+  const { data, pending, send, notify } = useStore();
   const team = data.teams.find(item => item.id === id);
   const back = <Link className="back-link" href="/team"><ArrowLeft size={17} aria-hidden="true" />Мои команды</Link>;
   if (!team) return <section className="empty-state">
@@ -73,6 +74,11 @@ function Overview({ userId }: { userId: string }) {
             <strong>{member.name}{member.id === userId && <span> · Ты</span>}</strong>
             <span>{member.id === team.ownerId ? 'Владелец' : 'Участник'}</span>
           </span>
+          {team.active && team.ownerId === userId && member.id !== userId &&
+            <button type="button" className="text-button" disabled={pending} aria-label={`Отозвать доступ: ${member.name}`} onClick={async () => {
+              if (!window.confirm(`Отозвать у ${member.name} доступ к команде «${team.name}»?`)) return;
+              if (await send({ type: 'team-member', teamId: team.id, memberId: member.id, remove: true })) notify('Доступ отозван');
+            }}>Отозвать доступ</button>}
         </li>)}</ul> : <p className={styles.empty}>Список участников пока недоступен.</p>}
         {team.active && team.ownerId === userId && <MemberAccess key={team.id} teamId={team.id} />}
       </section>
@@ -87,6 +93,7 @@ function Overview({ userId }: { userId: string }) {
           <span>{publicationLabels[guide.status]}</span>
         </span>
         {team.active && <Link className="text-button" href={`/editor?id=${encodeURIComponent(guide.id)}`}>Редактировать</Link>}
+        <DeleteGuide guide={guide} />
       </li>)}</ul>
     </details>}
   </div>;
@@ -95,21 +102,20 @@ function Overview({ userId }: { userId: string }) {
 function MemberAccess({ teamId }: { teamId: string }) {
   const { send, pending, notify } = useStore();
   const [email, setEmail] = useState('');
-  async function changeMember(remove: boolean) {
-    if (await send({ type: 'team-member', teamId, email, remove })) {
+  async function addMember() {
+    if (await send({ type: 'team-member', teamId, email })) {
       setEmail('');
-      notify(remove ? 'Доступ отозван' : 'Доступ выдан');
+      notify('Доступ выдан');
     }
   }
   return <details className={styles.memberAccess}>
-    <summary>Управление доступом</summary>
+    <summary>Добавить участника</summary>
     <div className="field">
       <label htmlFor="team-member-email">Email участника</label>
       <input id="team-member-email" type="email" value={email} onChange={event => setEmail(event.target.value)} />
     </div>
     <div className="utility-actions">
-      <button type="button" className="button button-dark" disabled={pending || !email.trim()} onClick={() => void changeMember(false)}>Добавить</button>
-      <button type="button" className="button button-outline" disabled={pending || !email.trim()} onClick={() => void changeMember(true)}>Отозвать доступ</button>
+      <button type="button" className="button button-dark" disabled={pending || !email.trim()} onClick={() => void addMember()}>Добавить</button>
     </div>
   </details>;
 }

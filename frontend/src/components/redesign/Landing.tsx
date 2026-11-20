@@ -26,7 +26,7 @@ export function Landing() {
     <section className={`section-container ${styles.landing}`} id="subscriptions" aria-labelledby="subscriptions-title">
       <div className={styles.landingIntro}>
         <h2 id="subscriptions-title">Подписки StepFlow</h2>
-        <p>Каталог, прохождение и PDF доступны бесплатно. Подписка пригодится, если хочешь проверять чужие инструкции или собирать рабочие материалы для команды.</p>
+        <p>Бесплатно можно проходить инструкции и сохранить до 10 своих. Если нужно больше места, попробуй Plus на месяц. Для совместной работы есть Бизнес.</p>
         <Link href="/subscriptions" className="button button-dark">Посмотреть тарифы <ArrowUpRight size={17} aria-hidden="true" /></Link>
         <p className={styles.demoNote}>В демо тарифы можно попробовать без оплаты.</p>
       </div>
@@ -34,7 +34,7 @@ export function Landing() {
         {paidPlans.map(plan => <article key={plan.id} className={styles.landingPlan}>
           <h3>{plan.name}</h3>
           <p>{plan.id === 'standard'
-            ? 'Если администратор назначит тебя экспертом, сможешь оставлять рецензии и отмечать проверенные инструкции.'
+            ? 'Создавай личные инструкции и форки без лимита. После назначения экспертом сможешь оставлять рецензии и отмечать проверенные материалы.'
             : 'Собери инструкции для онбординга и рабочих задач в закрытом пространстве. Редактируйте их вместе и публикуйте без лимита. Подписка нужна только владельцу команды.'}</p>
           {plan.id === 'business' && <p className={styles.price}>{businessPrice}</p>}
         </article>)}

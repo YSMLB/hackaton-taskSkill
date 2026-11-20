@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 
 	"stepflow/backend/internal/ai"
+	"stepflow/backend/internal/provider"
 	"stepflow/backend/internal/storage"
 )
 
@@ -83,11 +86,7 @@ func (s *Server) handleHint(w http.ResponseWriter, r *http.Request, general bool
 		}
 		hint, err := ai.ReplyToChat(r.Context(), input.Question, input.History, input.Screenshot)
 		if err != nil {
-			message := "Не удалось получить ответ. Попробуй ещё раз."
-			if input.Screenshot != "" {
-				message = "Не удалось получить ответ со скриншотом. Попробуй отправить вопрос текстом."
-			}
-			s.writeError(w, storage.NewWorkspaceError(message, http.StatusBadGateway))
+			s.writeHintError(w, err, input.Screenshot != "")
 			return
 		}
 		s.writeJSON(w, http.StatusOK, map[string]string{"hint": hint}, map[string]string{"Cache-Control": "private, no-store"})
@@ -108,17 +107,41 @@ func (s *Server) handleHint(w http.ResponseWriter, r *http.Request, general bool
 		}
 		hint, err := ai.ExplainStep(r.Context(), guide, step, completed, input.Question, input.History, input.Screenshot)
 		if err != nil {
-			message := "Не удалось получить ответ. Попробуй ещё раз или задай вопрос автору."
-			if input.Screenshot != "" {
-				message = "Не удалось получить ответ со скриншотом. Попробуй отправить текст ошибки или проверь, поддерживает ли модель изображения."
-			}
-			s.writeError(w, storage.NewWorkspaceError(message, http.StatusBadGateway))
+			s.writeHintError(w, err, input.Screenshot != "")
 			return
 		}
 		s.writeJSON(w, http.StatusOK, map[string]string{"hint": hint}, map[string]string{"Cache-Control": "private, no-store"})
 		return
 	}
 	s.writeError(w, storage.NewWorkspaceError("Шаг не найден.", http.StatusNotFound))
+}
+
+func (s *Server) writeHintError(w http.ResponseWriter, err error, image bool) {
+	var network net.Error
+	var upstream *ai.ModelHTTPError
+	code := http.StatusBadGateway
+	message := "Модель не вернула ответ. Отправь сообщение ещё раз."
+	switch {
+	case errors.Is(err, provider.ErrBusy):
+		w.Header().Set("Retry-After", "8")
+		code, message = http.StatusServiceUnavailable, "Alina.AI отвечает другим участникам. Попробуй через несколько секунд."
+	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &network) && network.Timeout()):
+		code, message = http.StatusGatewayTimeout, "Модель не успела ответить. Текст сохранён в поле ввода, его можно отправить ещё раз."
+	case errors.As(err, &upstream):
+		switch upstream.Status {
+		case 404:
+			message = "Настроенная модель недоступна. Проверь название модели на сервере."
+		case 429, 503:
+			code, message = http.StatusServiceUnavailable, "Модель сейчас занята. Отправь сообщение чуть позже."
+		case 400, 422:
+			if image {
+				message = "Модель не приняла изображение. Попробуй отправить текст ошибки."
+			}
+		}
+	case errors.As(err, &network):
+		code, message = http.StatusServiceUnavailable, "Нет соединения с моделью. Для локального запуска проверь, работает ли Ollama."
+	}
+	s.writeError(w, storage.NewWorkspaceError(message, code))
 }
 
 func validHintScreenshot(value string) bool {

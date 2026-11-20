@@ -26,7 +26,8 @@ function NoticeRow({ notice, compact, onOpen }: { notice: Notice; compact?: bool
 }
 
 export function NotificationCenter() {
-  const { data, send, pending } = useStore();
+  const { data, send, pending, refresh } = useStore();
+  useEffect(() => { void refresh(); }, [refresh]);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const unread = data.notices.filter(notice => !notice.read);
   const visible = unreadOnly ? unread : data.notices;
@@ -48,7 +49,7 @@ export function NotificationCenter() {
         </button>
       </div>
       <button type="button" className={styles.markRead} disabled={pending || !unread.length}
-        onClick={() => void send({ type: 'notices-read' })}>
+        onClick={() => void send({ type: 'notices-read', ids: unread.map(n => n.id) })}>
         <CheckCheck size={17} aria-hidden="true" /> Прочитать все
       </button>
     </div>
@@ -65,11 +66,12 @@ export function NotificationCenter() {
 }
 
 export function NotificationMenu({ collapsed, current, onNavigate }: { collapsed: boolean; current: boolean; onNavigate: () => void }) {
-  const { data, send, pending } = useStore();
+  const { data, send, pending, refresh } = useStore();
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const unread = data.notices.filter(notice => !notice.read).length;
+  const unreadNotices = data.notices.filter(notice => !notice.read);
+  const unread = unreadNotices.length;
   const recent = data.notices.slice(0, 5);
 
   const positionPanel = useCallback(() => {
@@ -105,7 +107,12 @@ export function NotificationMenu({ collapsed, current, onNavigate }: { collapsed
       {unread > 0 && <span className={styles.badge}>{unread > 99 ? '99+' : unread}</span>}
     </button>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-labelledby={id + '-title'} className={styles.panel}
-      onBeforeToggle={event => { if (event.newState === 'open') positionPanel(); }}>
+      onBeforeToggle={event => {
+        if (event.newState === 'open') {
+          positionPanel();
+          void refresh();
+        }
+      }}>
       <header className={styles.heading}>
         <h2 id={id + '-title'}>Уведомления</h2>
         <button className="icon-button" type="button" aria-label="Закрыть уведомления" onClick={close}><X size={18} /></button>
@@ -113,7 +120,7 @@ export function NotificationMenu({ collapsed, current, onNavigate }: { collapsed
       {recent.length > 0 && <div className={styles.panelToolbar}>
         <span role="status">{unread ? `Непрочитанные · ${unread}` : 'Всё прочитано'}</span>
         <button className={styles.markRead} type="button" disabled={pending || !unread}
-          onClick={() => void send({ type: 'notices-read' })}><CheckCheck size={16} aria-hidden="true" /> Прочитать все</button>
+          onClick={() => void send({ type: 'notices-read', ids: unreadNotices.map(n => n.id) })}><CheckCheck size={16} aria-hidden="true" /> Прочитать все</button>
       </div>}
       {recent.length ? <ul className={styles.list}>
         {recent.map(notice => <NoticeRow compact key={notice.id} notice={notice} onOpen={() => {

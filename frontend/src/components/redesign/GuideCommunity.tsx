@@ -16,7 +16,7 @@ export function GuideCommunity({ guide }: { guide: Instruction }) {
   const summary = voteSummary(votes);
 
   return <section className={styles.panel} aria-label="Полезность и версии инструкции">
-    {guide.source && <p className={styles.origin}>На основе <Link href={`/guide?id=${guide.source.id}`}>«{guide.source.title}»</Link><span>Автор исходника: {guide.source.author}</span></p>}
+    {guide.source && <p className={styles.origin}>На основе {data.guides.some(g => g.id === guide.source?.id) ? <Link href={`/guide?id=${guide.source.id}`}>«{guide.source.title}»</Link> : `«${guide.source.title}»`}<span>Автор исходника: {guide.source.author}</span></p>}
     {guide.status === 'published' && <>
       <div className={styles.rating}>
         <div className={styles.ratingCopy}>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, ShieldCheck } from 'lucide-react';
 import { isAdmin, type Instruction } from '@shared/community';
 import type { ExpertSummary, ModerationDecision } from '@shared/workspace-data';
@@ -13,14 +13,26 @@ import styles from './Moderation.module.css';
 const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' });
 const sections = [
   { id: 'queue', label: 'Очередь', href: '/moderation' },
+  { id: 'stats', label: 'Статистика и вопросы', href: '/moderation?tab=stats' },
   { id: 'history', label: 'Решения', href: '/moderation?tab=history' },
   { id: 'experts', label: 'Эксперты', href: '/moderation?tab=experts' },
+  { id: 'admins', label: 'Администраторы', href: '/moderation?tab=admins' },
 ] as const;
 
 export function Moderation() {
   const { data, profile } = useStore();
-  const tab = useSearchParams().get('tab');
-  const section = sections.find(item => item.id === tab) ?? sections[0];
+  const params = useSearchParams();
+  const tab = params.get('tab');
+  const guideId = params.get('guide');
+  const revision = params.get('revision');
+  const matchesRevision = (value?: number) => revision === null || String(value ?? 0) === revision;
+  const targetGuide = data.guides.find(guide => guide.id === guideId && guide.status === 'pending' && matchesRevision(guide.revision));
+  const targetDecision = data.moderation?.decisions.slice().reverse().find(item => item.guideId === guideId && matchesRevision(item.revision));
+  const target = targetGuide ? `request-${targetGuide.id}` : targetDecision ? `decision-${targetDecision.id}` : null;
+  const section = sections.find(item => item.id === (targetDecision && !targetGuide ? 'history' : tab)) ?? sections[0];
+  useEffect(() => {
+    if (target) document.getElementById(target)?.scrollIntoView({ block: 'nearest' });
+  }, [target]);
   if (!isAdmin(profile)) return <section className="empty-state">
     <ShieldCheck size={32} aria-hidden="true" />
     <h1>Админ-панель недоступна</h1>
@@ -28,39 +40,60 @@ export function Moderation() {
     <Link href="/catalog" className="button button-dark">В каталог</Link>
   </section>;
 
-  const queue = data.guides.filter(guide => guide.status === 'pending' && !guide.teamId)
+  const queue = data.guides.filter(guide => guide.status === 'pending')
     .sort((a, b) => (a.submittedAt ?? '').localeCompare(b.submittedAt ?? ''));
   const decisions = data.moderation?.decisions ?? [];
   const experts = data.moderation?.experts ?? [];
   return <div className={styles.admin}>
     <header className={styles.header}>
       <h1>Админ-панель</h1>
+      <p>Проверяй публикации, просматривай решения и управляй правами участников.</p>
     </header>
-    <AdminAssignment />
     <nav className={styles.sections} aria-label="Разделы админ-панели">
       {sections.map(item => <Link key={item.id} href={item.href} aria-current={item.id === section.id ? 'page' : undefined}>
         {item.label}{item.id === 'queue' && <span className={styles.count}>{queue.length}</span>}
       </Link>)}
     </nav>
-    {section.id === 'queue' ? <Queue guides={queue} /> : section.id === 'history' ? <History decisions={decisions} /> : <Experts experts={experts} />}
+    {guideId && !target && <p role="status">Этой версии заявки уже нет в очереди.</p>}
+    {section.id === 'stats' ? <section className="reports-panel">
+      <h2>Статистика и вопросы по инструкциям</h2>
+      {(data.moderation?.posts ?? []).map(post => <article key={post.id}>
+        <h3>{post.title}</h3>
+        <p>Начали {post.started} · Завершили {post.completed} · Вопросов {post.reports?.length ?? 0}</p>
+        {!!post.reports?.length && <details><summary>Посмотреть вопросы</summary>
+          {post.reports.map(report => <div key={report.id}><p>{report.text}</p><p className="muted">{report.reply || 'Ответа пока нет'}</p></div>)}
+        </details>}
+      </article>)}
+    </section> : section.id === 'queue' ? <Queue key={targetGuide?.id} guides={queue} selectedId={targetGuide?.id} /> : section.id === 'history' ? <History key={targetDecision?.id} decisions={decisions} selectedId={targetDecision?.id} /> : section.id === 'admins' ? <AdminAssignment /> : <Experts experts={experts} />}
   </div>;
 }
 
 function AdminAssignment() {
   const { send, pending, notify } = useStore();
   const [email, setEmail] = useState('');
-  return <form className={styles.content} onSubmit={async event => {
+  const [confirming, setConfirming] = useState(false);
+  const [assigned, setAssigned] = useState('');
+  return <section className={styles.content}>
+    <div className={styles.toolbar}><div><h2>Администраторы</h2><p>Выдача доступа к проверке публикаций и управлению ролями.</p></div></div>
+    <form className={styles.assignment} onSubmit={async event => {
     event.preventDefault();
-    if (await send({ type: 'admin', email })) { setEmail(''); notify('Администратор назначен'); }
+    if (!confirming) { setConfirming(true); return; }
+    if (await send({ type: 'admin', email: email.trim() })) { setAssigned(email.trim()); setEmail(''); setConfirming(false); notify('Администратор назначен'); }
   }}>
     <h2>Добавить администратора</h2>
+    <p className="muted">Пользователь должен быть зарегистрирован. Он получит доступ к модерации, назначению экспертов и других администраторов.</p>
     <div className="field"><label htmlFor="admin-email">Email зарегистрированного пользователя</label>
-      <input id="admin-email" type="email" required value={email} onChange={event => setEmail(event.target.value)} /></div>
-    <button className="button button-dark" disabled={pending || !email.trim()}>Назначить администратором</button>
-  </form>;
+      <input id="admin-email" type="email" autoComplete="email" maxLength={254} required value={email} onChange={event => { setEmail(event.target.value); setConfirming(false); setAssigned(''); }} /></div>
+    {confirming && <p className={styles.confirmation}>Предоставить пользователю {email.trim()} полные права администратора?</p>}
+    <div className={styles.assignmentActions}>
+      <button className="button button-dark" disabled={pending || !email.trim()}>{pending ? 'Сохраняем…' : confirming ? 'Подтвердить назначение' : 'Продолжить'}</button>
+      {confirming && <button className="button button-outline" type="button" disabled={pending} onClick={() => setConfirming(false)}>Отмена</button>}
+    </div>
+    {assigned && <p className={styles.success} role="status">Права администратора выданы пользователю {assigned}.</p>}
+  </form></section>;
 }
 
-function Queue({ guides }: { guides: Instruction[] }) {
+function Queue({ guides, selectedId }: { guides: Instruction[]; selectedId?: string }) {
   const [query, setQuery] = useState('');
   const needle = query.trim().toLocaleLowerCase('ru');
   const visible = guides.filter(guide => [guide.title, guide.author, guide.category].some(value => value.toLocaleLowerCase('ru').includes(needle)));
@@ -72,7 +105,7 @@ function Queue({ guides }: { guides: Instruction[] }) {
     </div>
     <AutoModeration />
     {visible.length ? <div className={styles.stack}>{visible.map(guide =>
-      <ReviewCard key={`${guide.id}:${guide.revision ?? 0}`} guide={guide} />
+      <ReviewCard key={`${guide.id}:${guide.revision ?? 0}`} guide={guide} selected={guide.id === selectedId} />
     )}</div> : <div className={styles.empty}>
       <strong>{guides.length ? 'По запросу ничего не найдено' : 'Очередь пуста'}</strong>
       {!guides.length && <p>Здесь появятся инструкции, которые авторы отправят на проверку.</p>}
@@ -94,7 +127,7 @@ function AutoModeration() {
   </div>;
 }
 
-function ReviewCard({ guide }: { guide: Instruction }) {
+function ReviewCard({ guide, selected }: { guide: Instruction; selected: boolean }) {
   const { data, send, pending, notify } = useStore();
   const manualReviewNote = data.moderation?.manualReviewNotes?.[guide.id];
   const [note, setNote] = useState('');
@@ -112,11 +145,11 @@ function ReviewCard({ guide }: { guide: Instruction }) {
     }
   }
 
-  return <article className="review-card">
+  return <article id={`request-${guide.id}`} className={`review-card ${selected ? styles.selected : ''}`}>
     <div className="panel-heading">
       <div>
         <h3>{guide.title}</h3>
-        <p>{guide.author} · {guide.category}{guide.submittedAt && <> · <time dateTime={guide.submittedAt}>{dateFormat.format(new Date(guide.submittedAt))}</time></>}</p>
+        <p>{guide.teamId && 'Командная · '}{guide.author} · {guide.category}{guide.submittedAt && <> · <time dateTime={guide.submittedAt}>{dateFormat.format(new Date(guide.submittedAt))}</time></>}</p>
       </div>
       <Link href={`/guide?id=${encodeURIComponent(guide.id)}`} className="button button-outline">Предпросмотр <ArrowUpRight size={16} aria-hidden="true" /></Link>
     </div>
@@ -147,7 +180,7 @@ function ReviewCard({ guide }: { guide: Instruction }) {
   </article>;
 }
 
-function History({ decisions }: { decisions: ModerationDecision[] }) {
+function History({ decisions, selectedId }: { decisions: ModerationDecision[]; selectedId?: string }) {
   const [filter, setFilter] = useState<'all' | 'approved' | 'rejected'>('all');
   const visible = decisions.filter(item => filter === 'all' || item.approved === (filter === 'approved'))
     .reverse().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -164,7 +197,7 @@ function History({ decisions }: { decisions: ModerationDecision[] }) {
         </select>
       </label>
     </div>
-    {visible.length ? <ul className={styles.stack}>{visible.map(item => <li key={item.id} className={styles.decision}>
+    {visible.length ? <ul className={styles.stack}>{visible.map(item => <li key={item.id} id={`decision-${item.id}`} className={`${styles.decision} ${selectedId === item.id ? styles.selected : ''}`}>
       <div className={styles.decisionHeading}>
         <h3>{item.title}</h3><span className={`status ${item.approved ? 'published' : 'rejected'}`}>{item.approved ? 'Опубликована' : 'На доработку'}</span>
       </div>

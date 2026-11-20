@@ -2,25 +2,12 @@
 
 import Image from 'next/image';
 import { Check, Paperclip, Plus, X } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useRef, type ChangeEvent } from 'react';
 import type { Instruction, Step } from '@shared/community';
 import { useStore } from './store';
 import styles from './MentorChat.module.css';
 
-type Screenshot = { name: string; url: string };
-type Turn = { question: string; answer: string; screenshot?: Screenshot };
-
-
-type Thread = {
-  turns: Turn[];
-  question: string;
-  screenshot?: Screenshot;
-  sending?: string;
-  reading?: boolean;
-  error?: string;
-};
-
-const emptyThread: Thread = { turns: [], question: '' };
+import { emptyThread, useMentorThreads, type Thread } from './MentorThreads';
 
 type MentorChatProps = { open?: boolean; id?: string } & (
   | { guide: Instruction; step: Step; onClose: () => void }
@@ -31,23 +18,16 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
   const { data } = useStore();
   const headingId = useId();
   const messageId = headingId + '-message';
-  const [threads, setThreads] = useState<Record<string, Thread>>({});
-  const requests = useRef(new Map<string, AbortController>());
+  const { threads, setThreads, requests } = useMentorThreads();
   const panel = useRef<HTMLElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const messages = useRef<HTMLDivElement>(null);
   const standalone = !step;
-  const threadKey = step?.id ?? 'chat';
+  const threadKey = step ? JSON.stringify([guide.id, step.id]) : 'chat';
   const thread = threads[threadKey] ?? emptyThread;
   const current = guide?.steps.findIndex(item => item.id === step?.id) ?? -1;
   const completed = guide?.steps.slice(0, current).filter(item => data.runs[guide.id]?.completed.includes(item.id)) ?? [];
 
-  useEffect(() => {
-    const controllers = requests.current;
-    return () => {
-      for (const controller of controllers.values()) controller.abort();
-    };
-  }, []);
   useEffect(() => {
     if (!open || standalone) return;
     panel.current?.focus({ preventScroll: true });
@@ -89,13 +69,12 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
 
   async function send(message: string) {
     const stepId = threadKey;
-    if (requests.current.has(stepId) || thread.reading) return;
+    if (requests.has(stepId) || thread.reading) return;
     const controller = new AbortController();
-    requests.current.set(stepId, controller);
+    requests.set(stepId, controller);
     update(stepId, { sending: message, question: '', error: '' });
     const timeout = setTimeout(() => controller.abort(), 100_000);
     try {
-      const previousScreenshot = [...thread.turns].reverse().find(turn => turn.screenshot)?.screenshot;
       const response = await fetch(step ? '/api/ai/step-hint' : '/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -105,7 +84,7 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
           stepId: step?.id,
           question: message,
           history: thread.turns.slice(-6).map(({ question, answer }) => ({ question, answer })),
-          screenshot: (thread.screenshot ?? previousScreenshot)?.url,
+          screenshot: thread.screenshot?.url,
         }),
       });
       const result: { hint?: string; message?: string } = await response.json();
@@ -124,7 +103,7 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
       });
     } finally {
       clearTimeout(timeout);
-      requests.current.delete(stepId);
+      requests.delete(stepId);
       update(stepId, { sending: undefined });
     }
   }
@@ -136,11 +115,11 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
       if (event.key === 'Escape' && onClose) { event.stopPropagation(); onClose(); }
     }}>
     <div className={styles.chatHeading}>
-      <div><Heading id={headingId}>Artem.AI</Heading>{step && <p>Шаг {current + 1} из {guide.steps.length} · {step.title}</p>}</div>
-      {onClose ? <button className="icon-button" type="button" aria-label="Закрыть Artem.AI" onClick={onClose}>
+      <div><Heading id={headingId}>Alina.AI</Heading>{step && <p>Шаг {current + 1} из {guide.steps.length} · {step.title}</p>}</div>
+      {onClose ? <button className="icon-button" type="button" aria-label="Закрыть Alina.AI" onClick={onClose}>
         <X size={19} aria-hidden="true" />
       </button> : <button className="button button-outline" type="button" disabled={pending || thread.reading}
-        onClick={() => setThreads({})}><Plus size={17} aria-hidden="true" />Новый чат</button>}
+        onClick={() => setThreads(previous => ({ ...previous, [threadKey]: emptyThread }))}><Plus size={17} aria-hidden="true" />Новый чат</button>}
     </div>
     {completed.length > 0 && <details className={styles.context}>
       <summary>Выполненные шаги</summary>
@@ -157,13 +136,19 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
       {thread.turns.map((turn, index) => <div className={styles.turn} key={index}>
         <div className={styles.question}>
           <b>Ты</b><p>{turn.question}</p>
-          {turn.screenshot && <Image unoptimized src={turn.screenshot.url} alt="Приложенный скриншот ошибки" width={280} height={180} />}
+          {turn.screenshot && <>
+            <Image unoptimized src={turn.screenshot.url} alt="Приложенный скриншот ошибки" width={280} height={180} />
+            <button className="text-button" type="button" disabled={pending || thread.reading} onClick={() => {
+              update(threadKey, { screenshot: turn.screenshot, error: '' });
+              document.getElementById(messageId)?.focus();
+            }}>Спросить об этом скриншоте</button>
+          </>}
         </div>
-        <div className={styles.answer}><b>Artem.AI</b><p>{turn.answer}</p></div>
+        <div className={styles.answer}><b>Alina.AI</b><p>{turn.answer}</p></div>
       </div>)}
       {pending && <div className={styles.turn}>
         <div className={styles.question}><b>Ты</b><p>{thread.sending}</p></div>
-        <p className="muted" role="status">Artem.AI готовит ответ…</p>
+        <p className="muted" role="status">Alina.AI готовит ответ…</p>
       </div>}
     </div>
     <form className={styles.composer} onSubmit={event => {
@@ -173,9 +158,9 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
     }}>
       {thread.error && <p className="field-error" role="alert">{thread.error}</p>}
       <label htmlFor={messageId}>Сообщение</label>
-      <textarea id={messageId} maxLength={1500} rows={3} value={thread.question} readOnly={pending}
+      <textarea id={messageId} maxLength={1500} rows={2} value={thread.question} readOnly={pending}
         onKeyDown={event => {
-          if (step || event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+          if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
           event.preventDefault();
           event.currentTarget.form?.requestSubmit();
         }}

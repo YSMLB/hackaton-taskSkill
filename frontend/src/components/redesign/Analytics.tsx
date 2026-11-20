@@ -11,6 +11,11 @@ export function Analytics({ guide }: { guide?: Instruction }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   useEffect(() => { void refresh(); }, [refresh]);
   const stats = guide && data.analytics[guide.id];
+  const hasStats = Boolean(stats);
+  useEffect(() => {
+    const anchor = location.hash.slice(1);
+    if (hasStats && anchor.startsWith('question-')) document.getElementById(anchor)?.scrollIntoView({ block: 'nearest' });
+  }, [guide?.id, hasStats]);
   if (!guide || !stats) return <div className="empty-state">
     <h1>Статистика доступна автору</h1><Link href="/author">Мои инструкции</Link>
   </div>;
@@ -51,7 +56,7 @@ export function Analytics({ guide }: { guide?: Instruction }) {
       </table></div>
     </section>
     <section className="reports-panel"><h2><MessageCircle size={22} />Вопросы к шагам</h2>
-      {stats.reports.length ? stats.reports.map(report => <article key={report.id}>
+      {stats.reports.length ? stats.reports.map(report => <article key={report.id} id={`question-${report.id}`}>
         <span className="section-label">{guide.steps.find(step => step.id === report.stepId)?.title || 'Удалённый шаг'}</span>
         <p>{report.text}</p>
         {report.reply ? <p><strong>Ответ:</strong> {report.reply}</p> : <form className="account-tool-form" onSubmit={async event => {

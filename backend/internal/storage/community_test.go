@@ -56,7 +56,9 @@ func TestTeamEditing(t *testing.T) {
 	if guide, err := db.GetPublishedGuide(result.ID); err != nil || guide != nil {
 		t.Fatalf("Private embed: %v, %v", guide, err)
 	}
-	send(owner, command{"type": "team-member", "teamId": team.ID, "email": "editor@example.test", "remove": true}, 200)
+	memberID := models.ActorID(*edit.Profile)
+	send(editor, command{"type": "team-member", "teamId": team.ID, "memberId": team.OwnerID, "remove": true}, 403)
+	send(owner, command{"type": "team-member", "teamId": team.ID, "memberId": memberID, "remove": true}, 200)
 	snapshot, err := db.ReadWorkspace(editor)
 	if err != nil {
 		t.Fatal(err)

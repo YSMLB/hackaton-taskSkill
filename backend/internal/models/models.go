@@ -19,6 +19,8 @@ const (
 )
 
 type Profile struct {
+	PlusTrialUsed    bool   `json:"plusTrialUsed,omitempty"`
+	PlusTrialEndsAt  int64  `json:"plusTrialEndsAt,omitempty"`
 	RoleBeforeExpert string `json:"roleBeforeExpert,omitempty"`
 	Plan             string `json:"plan,omitempty"`
 	ID               string `json:"id,omitempty"`
@@ -180,7 +182,15 @@ type State struct {
 	Imports             map[string]map[string]string `json:"imports"`
 }
 
+type PostStats struct {
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Started   int      `json:"started"`
+	Completed int      `json:"completed"`
+	Reports   []Report `json:"reports"`
+}
 type ModerationData struct {
+	Posts             []PostStats          `json:"posts"`
 	PausedReason      string               `json:"pausedReason,omitempty"`
 	ManualReviewNotes map[string]string    `json:"manualReviewNotes,omitempty"`
 	Decisions         []ModerationDecision `json:"decisions"`
@@ -188,6 +198,8 @@ type ModerationData struct {
 }
 
 type ModerationDecision struct {
+	GuideID   string `json:"guideId,omitempty"`
+	Revision  int    `json:"revision,omitempty"`
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	Author    string `json:"author"`

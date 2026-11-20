@@ -17,13 +17,14 @@ export interface TeamMember { id: string; name: string }
 export interface Team { id: string; name: string; ownerId: string; memberIds: string[]; active: boolean; members?: TeamMember[] }
 export interface Notice { id: string; text: string; href: string; read: boolean; createdAt: string }
 export interface ModerationDecision {
+  guideId?: string; revision?: number;
   id: string; title: string; author: string; reviewer: string; approved: boolean; note: string; createdAt: string;
 }
 export interface ExpertSummary { id: string; name: string; email: string; active: boolean }
 export interface WorkspaceData {
   autoModeration?: boolean;
   myQuestions?: Report[];
-  moderation?: { decisions: ModerationDecision[]; experts: ExpertSummary[]; manualReviewNotes?: Record<string, string>; pausedReason?: string };
+  moderation?: { posts?: { id: string; title: string; started: number; completed: number; reports: Report[] | null }[]; decisions: ModerationDecision[]; experts: ExpertSummary[]; manualReviewNotes?: Record<string, string>; pausedReason?: string };
   teams: Team[];
   notices: Notice[];
   guides: Instruction[];
@@ -42,15 +43,18 @@ export type Command =
   | { type: 'register'; profile: ProfileEdits & { role: string } }
   | { type: 'login'; email: string }
   | { type: 'logout' }
+  | { type: 'start-plus-trial' }
   | { type: 'plan'; plan: 'free' | 'standard' | 'business' }
   | { type: 'expert'; email: string; enabled: boolean }
   | { type: 'admin'; email: string }
   | { type: 'team-create'; name: string }
   | { type: 'team-member'; teamId: string; email: string; remove?: boolean }
-  | { type: 'notices-read'; id?: string }
+  | { type: 'team-member'; teamId: string; memberId: string; remove: true }
+  | { type: 'notices-read'; id: string } | { type: 'notices-read'; ids: string[] }
   | { type: 'reply'; guideId: string; reportId: string; text: string }
   | { type: 'profile'; edits: ProfileEdits }
-  | { type: 'save'; guide: Instruction; submit: boolean }
+  | { type: 'save'; guide: Instruction; submit: boolean; updateOnly?: boolean }
+  | { type: 'delete-guide'; guideId: string; revision: number; status: Instruction['status'] }
   | { type: 'fork'; guideId: string }
   | { type: 'moderate'; guideId: string; revision?: number; decision: 'approve' | 'reject'; note: string }
   | { type: 'auto-moderation'; enabled: boolean }

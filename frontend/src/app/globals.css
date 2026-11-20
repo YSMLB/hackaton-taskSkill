@@ -274,3 +274,41 @@ body:has(.account-dialog[open]){overflow:hidden}
   .player-heading { flex-wrap: wrap; }
   .catalog-filter-meta { flex-wrap: wrap; }
 }
+
+.guide-card .card-labels { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-start; gap: 6px; }
+.card-labels > .pill, .card-labels > .status { flex: none; white-space: nowrap; }
+.editor-submit { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.editor-submit .validation-error { flex-basis: 100%; margin: 0; }
+@media (max-width: 700px) { .editor-submit .button { width: 100%; } }
+
+/* Finish screen */
+.completion { width: 100%; max-width: 740px; margin: 20px auto 40px; gap: 20px; align-items: stretch; text-align: start; }
+.completion-summary { padding: clamp(18px, 3vw, 32px); border: 1px solid var(--line); border-radius: 16px; background: var(--white); scroll-margin-top: 16px; }
+.completion-heading { display: flex; align-items: flex-start; gap: 14px; }
+.completion-heading > div { min-width: 0; }
+.completion-heading h1 { margin: 0 0 6px; font-size: clamp(1.4rem, 3vw, 2rem); line-height: 1.16; }
+.completion-heading p { margin: 0; overflow-wrap: anywhere; }
+.completion-heading .completion-mark { flex: none; width: 42px; height: 42px; background: var(--accent-soft); color: var(--accent-text); }
+.completion-navigation, .completion .guide-utilities { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 10px; }
+.completion-navigation { margin-block: 24px 18px; }
+.completion .guide-utilities { margin: 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.completion .utility-actions, .completion .embed-share { display: contents; }
+.completion .guide-utilities > span, .completion .embed-share-code, .completion .field-error { flex-basis: 100%; }
+.completion .guide-utilities .button { min-height: 44px; padding: 8px 12px; font-size: .8125rem; }
+.completion .guide-utilities .utility-actions > div { order: 1; margin: 0; }
+.completion .embed-share-code { order: 2; min-width: 0; max-width: 100%; }
+
+/* Keep document titles and their tools in separate tracks. */
+.editor-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 16px 24px; }
+.editor-top h1 { max-width: 36ch; text-wrap: pretty; }
+.editor-top .editor-actions { width: auto; max-width: none; display: flex; gap: 8px; align-items: center; justify-content: flex-start; }
+.editor-actions > div { margin-inline-start: 0; }
+.card-management { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.card-management .status { white-space: nowrap; }
+@media (max-width: 1000px) { .editor-top { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  .completion-navigation { display: grid; }
+  .completion .guide-utilities { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .completion .guide-utilities .utility-actions > div { justify-self: start; }
+  .editor-top .editor-actions { flex-wrap: wrap; }
+}

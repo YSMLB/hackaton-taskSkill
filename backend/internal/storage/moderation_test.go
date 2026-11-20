@@ -3,6 +3,8 @@ package storage
 import (
 	"encoding/json"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +55,15 @@ func TestAutomaticModerationUsesCurrentSubmittedVersion(t *testing.T) {
 		return *tok
 	}
 	admin, author := register("Администратор"), register("Автор")
+	// Self-registration now always creates a learner. Grant only the fixture account admin rights.
+	adminProfile, err := db.GetProfile(admin)
+	if err != nil || adminProfile == nil {
+		t.Fatalf("admin fixture: %v", err)
+	}
+	_, err = db.db.Exec(`UPDATE workspace SET payload=json_set(payload, ?, ?) WHERE id=1`, `$.accounts."`+adminProfile.ID+`".role`, "Администратор")
+	if err != nil {
+		t.Fatal(err)
+	}
 	setting := func(enabled bool) { send(admin, cmd{"type": "auto-moderation", "enabled": enabled}) }
 	draft := cmd{"id": "test", "title": "План урока", "category": "Учёба", "description": "Описание", "minutes": 10, "steps": []cmd{{"id": "one", "title": "Запиши", "text": "Текст", "checks": []string{"Готово"}}}}
 	submit := func() {
@@ -109,6 +120,16 @@ func TestAutomaticModerationUsesCurrentSubmittedVersion(t *testing.T) {
 	record(current, "approve", "stale setting")
 	current = requireQueued()
 	record(current, "manual", "Проверьте ссылку.")
+	adminFeed, err := db.ReadWorkspace(admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notices := adminFeed.Data.Notices
+	reviewLink := "/moderation?guide=" + current.Guide.ID + "&revision=" + strconv.Itoa(current.Guide.Revision)
+	if len(notices) != 3 || notices[0].Href != reviewLink || notices[1].Href != reviewLink ||
+		!strings.Contains(notices[0].Text, "ручная проверка") || !strings.Contains(notices[1].Text, "обновил") {
+		t.Fatal("expected separate admin notices for submission, current revision and manual referral", notices)
+	}
 	if job() != nil {
 		t.Fatal("uncertain revision was requeued")
 	}
@@ -225,5 +246,129 @@ func TestProviderFailuresEventuallyRequireManualReview(t *testing.T) {
 	state, err = db.loadState(nil)
 	if err != nil || state.AutoReviews[guide.ID].ManualNote == "" || len(state.ModerationDecisions) > 0 {
 		t.Fatal("error became an automated decision")
+	}
+}
+func TestTeamSubmissionUsesModerationQueue(t *testing.T) {
+	t.Setenv("STEPFLOW_DEMO_DATA", "1")
+	t.Setenv("AI_API_KEY", "test")
+	t.Setenv("AI_MODEL", "test")
+	t.Setenv("AI_BASE_URL", "http://localhost")
+	db, err := New(filepath.Join(t.TempDir(), "team.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	send := func(token, body string) (*models.CommandResult, *string) {
+		t.Helper()
+		r, next, err := db.ChangeWorkspace(token, []byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r, next
+	}
+	_, owner := send("", `{"type":"login","email":"member@stepflow.test"}`)
+	_, admin := send("", `{"type":"login","email":"admin@stepflow.test"}`)
+	submitted, _ := send(*owner, `{"type":"save","submit":true,"guide":{"id":"new","teamId":"demo-v1-team","title":"Собери отчёт","description":"Составь отчёт по шагам","minutes":10,"category":"Работа","steps":[{"id":"step","title":"Запиши выводы","text":"Открой документ и запиши результат","checks":["Готово"]}]}}`)
+	adminView, _ := send(*admin, `{"type":"auto-moderation","enabled":true}`)
+	found := false
+	for _, g := range adminView.Data.Guides {
+		if g.ID == submitted.ID && g.Status == models.StatusPending {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("missing team submission in admin queue")
+	}
+	for {
+		job, err := db.NextModerationJob()
+		if err != nil || job == nil {
+			t.Fatal("team job missing", err)
+		}
+		if job.Guide.ID == submitted.ID {
+			if err := db.RecordModeration(*job, "approve", "Готово"); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+		if err := db.RecordModeration(*job, "manual", "Проверить"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	view, err := db.ReadWorkspace(*owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range view.Data.Guides {
+		if g.ID == submitted.ID && g.Status == models.StatusPublished && g.TeamID == "demo-v1-team" {
+			public, err := db.GetPublishedGuide(g.ID)
+			if err != nil || public != nil {
+				t.Fatal("private guide exposed")
+			}
+			return
+		}
+	}
+	t.Fatal("approved team guide unavailable")
+}
+func TestLegacyTeamPublicationRequeuedOnce(t *testing.T) {
+	t.Setenv("STEPFLOW_DEMO_DATA", "1")
+	db, err := New(filepath.Join(t.TempDir(), "legacy-team.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	tx, err := db.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := db.loadState(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guide := models.Instruction{ID: "legacy-team", TeamID: "demo-v1-team", Status: models.StatusPublished, Revision: 3}
+	state.Guides = append(state.Guides, guide)
+	state.AutoModeration = true
+	if err = saveState(tx, state); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err = db.queueUnreviewedTeamPublications(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state, err = db.loadState(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	for _, n := range state.Notices["demo-v1-admin"] {
+		if strings.Contains(n.Href, "guide=legacy-team&revision=3") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected one moderation notice, got %d", count)
+	}
+	for _, g := range state.Guides {
+		if g.ID == "demo-v1-team-guide" && g.Status != models.StatusPublished {
+			t.Fatal("already reviewed publication changed")
+		}
+	}
+	job, err := db.NextModerationJob()
+	if err != nil || job == nil || job.Guide.ID != guide.ID {
+		t.Fatal("missing legacy job", err)
+	}
+	if err = db.RecordModeration(*job, "busy", ""); err != nil {
+		t.Fatal(err)
+	}
+	state, err = db.loadState(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt := state.AutoReviews[guide.ID]
+	if attempt.ManualNote != "" || attempt.Failures != 0 || attempt.RetryAt <= time.Now().Unix() {
+		t.Fatal("busy worker failed the submission")
 	}
 }

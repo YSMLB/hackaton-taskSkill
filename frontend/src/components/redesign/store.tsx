@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { Instruction, Profile } from '@shared/community';
+import { MentorThreads } from './MentorThreads';
 import { actorId } from '@shared/community';
 import { emptyWorkspace, type Command, type CommandResult, type WorkspaceSnapshot } from '@shared/workspace-data';
 
@@ -41,11 +42,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [catalogSort, setCatalogSort] = useState<Store['catalogSort']>('default');
   const version = useRef(0);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const refreshing = useRef(false);
   const work = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (work.current) return;
+    if (work.current || refreshing.current) return;
     if (!navigator.onLine || location.pathname === '/offline') { setReady(true); return; }
+    refreshing.current = true;
     const revision = ++version.current;
     try {
       const response = await fetch('/api/workspace', { cache: 'no-store' });
@@ -58,19 +61,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {
       if (revision === version.current) setError('Сервер недоступен. Сохранённые инструкции можно открыть офлайн.');
     } finally {
+      refreshing.current = false;
       if (revision === version.current) setReady(true);
     }
   }, []);
 
   useEffect(() => {
     function onFocus() { void refresh(); }
+    function refreshVisible() { if (document.visibilityState === 'visible') void refresh(); }
     const startup = setTimeout(onFocus, 0);
     window.addEventListener('focus', onFocus);
     window.addEventListener('online', onFocus);
-    const timer = setInterval(() => { if (document.visibilityState === 'visible') onFocus(); }, 30000);
+    document.addEventListener('visibilitychange', refreshVisible);
+    const timer = setInterval(refreshVisible, 3000);
     return () => {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onFocus);
+      document.removeEventListener('visibilitychange', refreshVisible);
       clearInterval(timer);
       clearTimeout(startup);
     };
@@ -112,7 +119,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return <Context.Provider value={{ ...snapshot, ready, pending, error, refresh, send, notify: setMessage, catalogSort, setCatalogSort }}>
-    {children}
+    <MentorThreads key={snapshot.profile ? actorId(snapshot.profile) : ''} account={snapshot.profile ? actorId(snapshot.profile) : ''}>{children}</MentorThreads>
     {error && <div className="storage-error" role="alert">{error}</div>}
     {message && <div className="toast" role="status">{message}</div>}
   </Context.Provider>;

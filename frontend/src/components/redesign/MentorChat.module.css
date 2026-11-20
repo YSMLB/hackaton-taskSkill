@@ -105,8 +105,8 @@
 .standalone .chatHeading button { min-height: 36px; padding: 6px 10px; font-size: 0.8125rem; }
 .standalone .messages { flex: 1; max-height: none; padding: 20px clamp(14px, 3vw, 24px); }
 .standalone .composer { flex: none; padding-inline: clamp(14px, 3vw, 24px); }
-.standalone .composer textarea { max-height: 30dvh; }
-.standalone .composer textarea { min-height: 5rem; }
+.standalone .composer textarea { min-height: 3rem; max-height: 22dvh; }
+.standalone .composer { gap: 10px; }
 .standalone .question { width: fit-content; max-width: min(100%, 570px); margin-inline-start: auto; }
 .standalone .answer { background: transparent; padding-inline: 0; }
 

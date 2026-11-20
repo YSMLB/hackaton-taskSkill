@@ -26,7 +26,7 @@ export function ExpertReviews({ guide }: { guide: Instruction }) {
     if (await send({ type: 'review', guideId: guide.id, text, verified })) setSaved(true);
   }
 
-  return <section className="reports-panel" aria-label="Экспертные рецензии">
+  return <section className="reports-panel" id="expert-reviews" aria-label="Экспертные рецензии">
     <h2><ShieldCheck size={20} aria-hidden="true" />Экспертные рецензии</h2>
     {reviews.length ? reviews.map(review => <article key={review.expertId}>
       <strong>{review.expertName}</strong>

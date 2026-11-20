@@ -18,11 +18,30 @@ function SavedGuides() {
   const [items, setItems] = useState(offlineGuides);
   const [selected, setSelected] = useState<string>();
   const [error, setError] = useState('');
+  const [removed, setRemoved] = useState<OfflineGuide[]>([]);
+  const lastRemoved = removed.at(-1);
   const active = items.find(item => item.guide.id === selected);
 
   function update(next: OfflineGuide[]) {
-    try { writeOfflineGuides(next); setItems(next); setError(''); }
-    catch { setError('Не удалось сохранить изменения на устройстве.'); }
+    try { writeOfflineGuides(next); setItems(next); setError(''); return true; }
+    catch { setError('Не удалось сохранить изменения на устройстве.'); return false; }
+  }
+
+  function remove(item: OfflineGuide) {
+    const latest = offlineGuides();
+    const copy = latest.find(entry => entry.guide.id === item.guide.id);
+    if (copy && update(latest.filter(entry => entry.guide.id !== item.guide.id))) {
+      setRemoved(previous => [...previous, copy]);
+    }
+  }
+
+  function undoRemove() {
+    if (!lastRemoved) return;
+    const latest = offlineGuides();
+    const alreadySaved = latest.some(item => item.guide.id === lastRemoved.guide.id);
+    if (update(alreadySaved ? latest : [lastRemoved, ...latest])) {
+      setRemoved(previous => previous.slice(0, -1));
+    }
   }
 
   function setCheck(stepId: string, index: number, checked: boolean) {
@@ -37,6 +56,10 @@ function SavedGuides() {
     <h1>Офлайн-библиотека</h1>
     <p className="muted">Сохранённые копии и отметки доступны на этом устройстве без интернета.</p>
     {error && <p className="field-error" role="alert">{error}</p>}
+    {lastRemoved && <div className="offline-item">
+      <span role="status">Копия «{lastRemoved.guide.title}» удалена.</span>
+      <button type="button" className="text-button" onClick={undoRemove}>Отменить удаление</button>
+    </div>}
     {active ? <>
       <button type="button" className="text-button" onClick={() => setSelected(undefined)}><ArrowLeft size={17} />К сохранённым инструкциям</button>
       <article className="offline-guide">
@@ -50,7 +73,7 @@ function SavedGuides() {
     </> : <div className="offline-items">
       {items.length ? items.map(item => <article key={item.guide.id} className="offline-item">
         <button type="button" className="text-button" onClick={() => setSelected(item.guide.id)}><BookOpen size={18} />{item.guide.title}</button>
-        <button type="button" className="icon-button" aria-label={`Удалить копию: ${item.guide.title}`} onClick={() => update(items.filter(entry => entry.guide.id !== item.guide.id))}><Trash2 size={18} /></button>
+        <button type="button" className="icon-button" aria-label={`Удалить копию: ${item.guide.title}`} onClick={() => remove(item)}><Trash2 size={18} /></button>
       </article>) : <p className="offline-item">Открой опубликованную инструкцию и нажми «Сохранить офлайн».</p>}
     </div>}
   </main>;

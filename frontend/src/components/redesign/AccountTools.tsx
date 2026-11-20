@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { actorId } from '@shared/community';
+import { actorId, isOwner } from '@shared/community';
 import { Check, ChevronRight } from 'lucide-react';
 import { businessPrice, plans } from '@/data/subscription-plans';
 import { RegistrationGate, WorkShell } from './Chrome';
@@ -22,19 +22,24 @@ export function AccountTools({ screen }: { screen: 'team' | 'notices' | 'subscri
 function Subscriptions() {
   const { profile, data, send, pending } = useStore();
   const active = profile?.plan || 'free';
+  const canTry = active === 'free' && !profile?.plusTrialUsed;
+  const used = data.guides.filter(g => !g.teamId && isOwner(g, profile)).length;
+  const ends = profile?.plusTrialEndsAt;
   return <section className="account-tools">
     <h1>Подписки</h1>
     <p className="muted">В демо можно переключать тарифы без оплаты.</p>
     <div className={styles.planGrid}>{plans.map(plan => <article className={styles.plan} data-current={active === plan.id} key={plan.id}>
       <h2>{plan.name}</h2>
       <p>{plan.summary}</p>
+      {plan.id === 'free' && active === 'free' && <p className={styles.price}>Личных инструкций: {used} из 10</p>}
+      {plan.id === 'standard' && (ends ? <p className={styles.price}>Пробный Plus до {new Date(ends).toLocaleDateString('ru-RU')}. Затем вернётся бесплатный тариф.</p> : canTry && <p className={styles.price}>Месяц бесплатно. Затем вернётся бесплатный тариф без списаний.</p>)}
       {plan.id === 'business' && <p className={styles.price}>{businessPrice}</p>}
       <ul className={styles.features}>{plan.features.map(feature =>
         <li key={feature}><Check size={17} aria-hidden="true" /><span>{feature}</span></li>
       )}</ul>
       <button type="button" className={`button ${plan.id === 'business' ? 'button-dark' : 'button-outline'}`} disabled={pending || active === plan.id}
-        onClick={() => void send({ type: 'plan', plan: plan.id })}>
-        {active === plan.id ? 'Текущий тариф' : plan.id === 'free' ? 'Выбрать бесплатный' : plan.id === 'standard' ? 'Выбрать Plus' : 'Выбрать Бизнес'}
+        onClick={() => void send(plan.id === 'standard' && canTry ? { type: 'start-plus-trial' } : { type: 'plan', plan: plan.id })}>
+        {active === plan.id ? 'Текущий тариф' : plan.id === 'free' ? 'Выбрать бесплатный' : plan.id === 'standard' ? (canTry ? 'Попробовать Plus на месяц' : 'Выбрать Plus') : 'Выбрать Бизнес'}
       </button>
     </article>)}</div>
     {active === 'business' && <div className={styles.teamAccess}>
