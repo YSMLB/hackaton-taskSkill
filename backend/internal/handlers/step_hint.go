@@ -117,6 +117,9 @@ func (s *Server) handleHint(w http.ResponseWriter, r *http.Request, general bool
 }
 
 func (s *Server) writeHintError(w http.ResponseWriter, err error, image bool) {
+	if s.writeContentRefusal(w, err) {
+		return
+	}
 	var network net.Error
 	var upstream *ai.ModelHTTPError
 	code := http.StatusBadGateway

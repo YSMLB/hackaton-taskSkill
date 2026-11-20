@@ -53,13 +53,14 @@ function ProfileForm({ profile }: { profile: Profile }) {
   const router = useRouter();
   const [name, setName] = useState(profile.name);
   const [email, setEmail] = useState(profile.email);
+  const [username, setUsername] = useState(profile.username || '');
   const [bio, setBio] = useState(profile.bio || '');
   const [avatar, setAvatar] = useState(profile.avatar);
   const [readingPhoto, setReadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
-  const dirty = name.trim() !== profile.name.trim() || email.trim() !== profile.email.trim() ||
+  const dirty = username.trim().replace(/^@/, '').toLowerCase() !== (profile.username || '') || name.trim() !== profile.name.trim() || email.trim() !== profile.email.trim() ||
     bio.trim() !== (profile.bio || '') || avatar !== profile.avatar;
 
   async function choosePhoto(event: ChangeEvent<HTMLInputElement>) {
@@ -86,7 +87,8 @@ function ProfileForm({ profile }: { profile: Profile }) {
     event.preventDefault();
     if (!dirty || readingPhoto) return;
     if (!name.trim() || !email.trim()) { setError('Заполни имя и email.'); return; }
-    const result = await send({ type: 'profile', edits: { name, email, bio, avatar } });
+    const result = await send({ type: 'profile', edits: { name, email, bio, avatar, username: username || undefined } });
+    if (result?.profile) setUsername(result.profile.username || '');
     setError('');
     setStatus(result ? 'Изменения сохранены' : '');
   }
@@ -94,6 +96,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
   function reset() {
     setName(profile.name);
     setEmail(profile.email);
+    setUsername(profile.username || '');
     setBio(profile.bio || '');
     setAvatar(profile.avatar);
     setPhotoError('');
@@ -107,6 +110,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
       <aside className={styles.summary} aria-label="Мой аккаунт">
         <ProfileAvatar photo={profile.avatar} name={profile.name} size={68} />
         <h2>{profile.name.trim() || 'Участник StepFlow'}</h2>
+        {profile.username && <p>@{profile.username}</p>}
         <p>{profile.email}</p>
         <span className={styles.role}>{profile.role}</span>
 
@@ -141,6 +145,11 @@ function ProfileForm({ profile }: { profile: Profile }) {
         <div className="field">
           <label htmlFor="profile-name">Имя и фамилия</label>
           <input id="profile-name" autoComplete="name" required maxLength={100} value={name} onChange={event => setName(event.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="profile-username">Юзернейм</label>
+          <input id="profile-username" autoComplete="username" autoCapitalize="none" spellCheck={false} maxLength={31} pattern="@?[A-Za-z0-9_]{3,30}" required={Boolean(profile.username)} placeholder="@alex_01" aria-describedby="profile-username-hint" value={username} onChange={event => setUsername(event.target.value)} />
+          <small id="profile-username-hint">По юзернейму тебя можно добавить в команду. Допустимы 3–30 латинских букв, цифр или подчёркиваний.</small>
         </div>
         <div className="field">
           <label htmlFor="profile-email">Email</label>

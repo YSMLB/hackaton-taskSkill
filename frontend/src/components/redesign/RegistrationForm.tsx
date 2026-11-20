@@ -11,13 +11,14 @@ export function RegistrationForm({ onComplete, mode = 'register', onModeChange }
   const { send, pending } = useStore();
   const prefix = useId();
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
 
   const signingIn = mode === 'login';
-  return <form className="registration-form" aria-labelledby={`${prefix}-heading`} noValidate onSubmit={async event => {
+  return <form className="registration-form" aria-labelledby={`${prefix}-heading`} onSubmit={async event => {
     event.preventDefault();
     if (pending) return;
-    const result = await send(signingIn ? { type: 'login', email } : { type: 'register', profile: { name, email, role: 'Ученик' } });
+    const result = await send(signingIn ? { type: 'login', email } : { type: 'register', profile: { name, email, username, role: 'Ученик' } });
     if (result) onComplete();
   }}>
     {onModeChange && <div className={styles.modes} role="group" aria-label="Способ входа"><button type="button" aria-pressed={!signingIn} onClick={() => onModeChange('register')}>Регистрация</button><button type="button" aria-pressed={signingIn} onClick={() => onModeChange('login')}>Вход</button></div>}
@@ -27,11 +28,16 @@ export function RegistrationForm({ onComplete, mode = 'register', onModeChange }
       <label htmlFor={`${prefix}-name`}>Имя и фамилия</label>
       <input id={`${prefix}-name`} type="text" autoComplete="name" maxLength={100} placeholder="Как к тебе обращаться" value={name} onChange={event => setName(event.target.value)} />
     </div>}
+    {!signingIn && <div className="field">
+      <label htmlFor={`${prefix}-username`}>Юзернейм</label>
+      <input id={`${prefix}-username`} autoComplete="username" autoCapitalize="none" spellCheck={false} required maxLength={31} pattern="@?[A-Za-z0-9_]{3,30}" placeholder="@alex_01" value={username} aria-describedby={`${prefix}-username-hint`} onChange={event => setUsername(event.target.value)} />
+      <small id={`${prefix}-username-hint`}>3–30 латинских букв, цифр или подчёркиваний. По юзернейму тебя найдут для приглашения в команду.</small>
+    </div>}
     <div className="field">
       <label htmlFor={`${prefix}-email`}>Email</label>
-      <input id={`${prefix}-email`} type="text" inputMode="email" autoComplete="email" maxLength={254} placeholder="Твой email" value={email} onChange={event => setEmail(event.target.value)} />
+      <input id={`${prefix}-email`} type="text" inputMode="email" required autoComplete="email" maxLength={254} placeholder="Твой email" value={email} onChange={event => setEmail(event.target.value)} />
     </div>
     <button className="button button-red registration-submit" type="submit" disabled={pending}>{signingIn ? 'Войти' : 'Зарегистрироваться'} <ArrowUpRight size={18} /></button>
-    <p className="registration-note">{signingIn ? 'Демо-вход без пароля: можно ввести любые символы. Для нового email откроется профиль ученика.' : 'Пока это демо: можно ввести любые символы. Подтверждать почту не нужно.'}</p>
+    <p className="registration-note">{signingIn ? 'Для входа в демо нужен email зарегистрированного профиля. Пароль не требуется.' : 'В демо подтверждать почту не нужно.'}</p>
   </form>;
 }

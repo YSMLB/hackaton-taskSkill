@@ -580,9 +580,12 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 		for _, team := range state.Teams {
 			if slices.Contains(team.MemberIDs, actor) {
 				members := make([]models.TeamMember, 0, len(team.MemberIDs))
-				for _, id := range team.MemberIDs {
+				team.MemberIDs = slices.Clone(team.MemberIDs)
+				team.OwnerID = rosterID(team.OwnerID, actor)
+				for i, id := range team.MemberIDs {
+					team.MemberIDs[i] = rosterID(id, actor)
 					if member, ok := state.Accounts[id]; ok {
-						members = append(members, models.TeamMember{ID: id, Name: member.Name})
+						members = append(members, models.TeamMember{ID: team.MemberIDs[i], Name: member.Name, Username: member.Username})
 					}
 				}
 				teams = append(teams, models.TeamSummary{Team: team, Members: members})
@@ -816,14 +819,15 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 	switch cmdType {
 	case "register", "login":
 		registering := cmdType == "register"
-		var email string
+		var email, username string
 		var role string
 		var name string
 
 		if registering {
 			rawProfile, ok := command["profile"].(map[string]any)
 			requireCondition(ok, "Некорректные данные.")
-			email = textValidation(rawProfile["email"], 254, false)
+			email = textValidation(rawProfile["email"], 254, true)
+			username = availableUsername(state, rawProfile["username"], "")
 			role = "Ученик"
 			name = textValidation(rawProfile["name"], 100, false)
 			if name == "" {
@@ -845,16 +849,18 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		requireCondition(roleValid, "Выбери доступную роль.")
 
 		existing := findAccount(state, email)
+		requireCondition(registering || existing != nil, "Профиль с таким email не найден. Сначала зарегистрируйся.", 404)
 		requireCondition(!registering || existing == nil, "Такой профиль уже есть. Нажми «Вход».", 409)
 
 		if existing != nil {
 			profile = existing
 		} else {
 			profile = &models.Profile{
-				ID:    RandomUUID(),
-				Email: email,
-				Role:  role,
-				Name:  name,
+				ID:       RandomUUID(),
+				Username: username,
+				Email:    email,
+				Role:     role,
+				Name:     name,
 			}
 		}
 
@@ -887,6 +893,14 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 		requireCondition(current != nil, "Войди в аккаунт, чтобы продолжить.", 401)
 		actor := models.ActorID(*current)
 
+		if cmdType == "team-member-search" {
+			team := teamForOwner(state, command, actor)
+			member := teamCandidate(state, command["username"])
+			requireCondition(!slices.Contains(team.MemberIDs, models.ActorID(*member)), "Участник уже в команде.", 409)
+			snap := buildSnapshot(state, profile)
+			return &models.CommandResult{Profile: snap.Profile, Data: snap.Data, MemberMatch: &models.UserMatch{Name: member.Name, Username: member.Username, Selection: Digest(models.ActorID(*member))}}, nil, nil
+		}
+
 		if changeAccount(state, current, cmdType, command) {
 			break
 		}
@@ -911,6 +925,10 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			name := textValidation(edits["name"], 100, true)
 
 			updated := *current
+			updated.ID = actor
+			if raw, present := edits["username"]; present {
+				updated.Username = availableUsername(state, raw, actor)
+			}
 			updated.Email = email
 			updated.Name = name
 			updated.Bio = bio

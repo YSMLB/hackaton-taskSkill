@@ -56,7 +56,7 @@ func TestMentorReceivesProgressHistoryAndScreenshot(t *testing.T) {
 			lesson.Question != "Что значит ошибка?" || parts[1].ImageURL.URL != image {
 			t.Errorf("unexpected context: %+v, attachment %+v", lesson, parts[1])
 		}
-		w.Write([]byte(`{"choices":[{"message":{"content":"Сверь обозначения с методичкой."}}]}`))
+		w.Write([]byte(`{"choices":[{"message":{"content":"{\"safety\":\"allow\",\"hint\":\"Сверь обозначения с методичкой.\"}"}}]}`))
 	}))
 	defer server.Close()
 	t.Setenv("AI_BASE_URL", server.URL)
@@ -92,7 +92,7 @@ func TestGeneralChatKeepsLastQuestionAndSelectsTextModel(t *testing.T) {
 		if payload.Messages[1].Content != "С чего начать?" || payload.Messages[2].Role != "assistant" || payload.Messages[3].Role != "user" || payload.Messages[3].Content != "А дальше?" {
 			t.Error("lost conversational context")
 		}
-		w.Write([]byte(`{"choices":[{"message":{"content":"Следующий шаг."}}]}`))
+		w.Write([]byte(`{"choices":[{"message":{"content":"{\"safety\":\"allow\",\"hint\":\"Следующий шаг.\"}"}}]}`))
 	}))
 	defer server.Close()
 	t.Setenv("AI_BASE_URL", server.URL)

@@ -52,7 +52,7 @@ func reviewGuide(ctx context.Context, guide models.Instruction) (moderationVerdi
 	if model == "" {
 		model = os.Getenv("AI_MODEL")
 	}
-	content, err := completeMessages(ctx, []chatMessage{{"system", moderationPrompt}, {"user", string(payload)}}, 0, 90*time.Second, "json_object", 320, model)
+	content, err := completeMessages(ctx, []chatMessage{{"system", moderationPrompt}, {"user", string(payload)}}, 0, 90*time.Second, jsonObjectFormat, 320, model)
 	if err != nil {
 		return moderationVerdict{}, err
 	}

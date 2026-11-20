@@ -57,9 +57,9 @@ func TestRegisterAndLogin(t *testing.T) {
 	regCmd := map[string]any{
 		"type": "register",
 		"profile": map[string]any{
-			"email": "author@stepflow.dev",
-			"name":  "Алиса Автор",
-			"role":  "Автор",
+			"username": "author", "email": "author@stepflow.dev",
+			"name": "Алиса Автор",
+			"role": "Автор",
 		},
 	}
 	regBytes, _ := json.Marshal(regCmd)
@@ -113,9 +113,9 @@ func TestGuideSaveAndModerate(t *testing.T) {
 	regAuthor, _ := json.Marshal(map[string]any{
 		"type": "register",
 		"profile": map[string]any{
-			"email": "author@test.ru",
-			"name":  "Автор Тест",
-			"role":  "Автор",
+			"username": "author", "email": "author@test.ru",
+			"name": "Автор Тест",
+			"role": "Автор",
 		},
 	})
 	_, authorToken, err := store.ChangeWorkspace("", regAuthor)
@@ -194,7 +194,7 @@ func TestGuideSaveAndModerate(t *testing.T) {
 			return next
 		}
 		learner := send("", map[string]any{"type": "register", "profile": map[string]any{
-			"email": "learner@example.test", "name": "Ученик", "role": "Ученик",
+			"username": "learner", "email": "learner@example.test", "name": "Ученик", "role": "Ученик",
 		}})
 		if learner == nil {
 			t.Fatal("learner session missing")

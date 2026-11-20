@@ -50,11 +50,11 @@ func TestAutomaticModerationUsesCurrentSubmittedVersion(t *testing.T) {
 		}
 		return r, next
 	}
-	register := func(role string) string {
-		_, tok := send("", cmd{"type": "register", "profile": cmd{"email": role + "@example.test", "name": role, "role": role}})
+	register := func(role, username string) string {
+		_, tok := send("", cmd{"type": "register", "profile": cmd{"username": username, "email": role + "@example.test", "name": role, "role": role}})
 		return *tok
 	}
-	admin, author := register("Администратор"), register("Автор")
+	admin, author := register("Администратор", "admin"), register("Автор", "author")
 	// Self-registration now always creates a learner. Grant only the fixture account admin rights.
 	adminProfile, err := db.GetProfile(admin)
 	if err != nil || adminProfile == nil {

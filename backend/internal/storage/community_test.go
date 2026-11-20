@@ -3,6 +3,7 @@ package storage_test
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"stepflow/backend/internal/models"
@@ -36,7 +37,7 @@ func TestTeamEditing(t *testing.T) {
 		return result, ""
 	}
 	register := func(email string) string {
-		_, cookie := send("", command{"type": "register", "profile": command{"email": email, "name": email, "role": "Автор"}}, 200)
+		_, cookie := send("", command{"type": "register", "profile": command{"email": email, "name": "Имя", "username": strings.Split(email, "@")[0], "role": "Автор"}}, 200)
 		return cookie
 	}
 	owner := register("owner@example.test")
@@ -44,7 +45,26 @@ func TestTeamEditing(t *testing.T) {
 	send(owner, command{"type": "plan", "plan": "business"}, 200)
 	created, _ := send(owner, command{"type": "team-create", "name": "Редакция"}, 200)
 	team := created.Data.Teams[0]
-	send(owner, command{"type": "team-member", "teamId": team.ID, "email": "editor@example.test"}, 200)
+	lookup := command{"type": "team-member-search", "teamId": team.ID, "username": "@EDITOR"}
+	send("", lookup, 401)
+	send(editor, lookup, 403)
+	send(owner, command{"type": "team-member-search", "teamId": team.ID, "username": "edit"}, 404)
+	found, _ := send(owner, lookup, 200)
+	match := found.MemberMatch
+	if match == nil || match.Username != "editor" || match.Name != "Имя" || match.Selection == "" {
+		t.Fatalf("unexpected match: %+v", match)
+	}
+	payload, _ := json.Marshal(found)
+	if strings.Contains(string(payload), "editor@example.test") {
+		t.Fatal("Team search disclosed candidate's email")
+	}
+	send(editor, command{"type": "profile", "edits": command{"name": "Имя", "email": "editor@example.test", "username": "new_editor"}}, 200)
+	replacement := register("other@example.test")
+	send(replacement, command{"type": "profile", "edits": command{"name": "Имя", "email": "other@example.test", "username": "editor"}}, 200)
+	send(owner, command{"type": "team-member", "teamId": team.ID, "username": "editor", "selection": match.Selection}, 409)
+	send(owner, command{"type": "team-member", "teamId": team.ID, "username": "@NEW_EDITOR", "selection": match.Selection}, 200)
+	send(owner, command{"type": "team-member-search", "teamId": team.ID, "username": "new_editor"}, 409)
+	send(editor, lookup, 403)
 	draft := command{"id": "new", "teamId": team.ID, "title": "Инструкция", "description": "Описание", "category": "Учёба", "minutes": 10, "steps": []command{{"id": "step", "title": "Шаг", "text": "Действие", "checks": []string{"Готово"}, "imageUrl": "https://example.test/image.jpg"}}}
 	result, _ := send(owner, command{"type": "save", "guide": draft, "submit": true}, 200)
 	draft["id"], draft["revision"] = result.ID, 1
@@ -71,5 +91,6 @@ func TestTeamEditing(t *testing.T) {
 	draft["revision"] = 2
 	send(editor, command{"type": "save", "guide": draft}, 403)
 	send(owner, command{"type": "plan", "plan": "free"}, 200)
+	send(owner, lookup, 403)
 	send(owner, command{"type": "save", "guide": draft}, 403)
 }

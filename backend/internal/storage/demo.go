@@ -3,9 +3,30 @@ package storage
 import (
 	"encoding/json"
 	"stepflow/backend/internal/models"
+	"strconv"
 	"strings"
 	"time"
 )
+
+func seedDemoUsernames(state *models.State) bool {
+	changed := false
+	for _, role := range []string{"admin", "member", "expert", "learner"} {
+		id := "demo-v1-" + role
+		profile, ok := state.Accounts[id]
+		if !ok || profile.Username != "" {
+			continue
+		}
+		base := "demo_" + role
+		username := base
+		for suffix := 2; findUsername(state, username) != nil; suffix++ {
+			username = base + "_" + strconv.Itoa(suffix)
+		}
+		profile.Username = username
+		state.Accounts[id] = profile
+		changed = true
+	}
+	return changed
+}
 
 // Demo data is opt-in and installed once. Existing accounts are never replaced.
 func (s *Storage) seedDemo() error {
@@ -22,7 +43,7 @@ func (s *Storage) seedDemo() error {
 		// Only migrate the original fixture and its generated labels, preserving user edits.
 		const oldTitle = "Демо · Собрать презентацию с Artem.AI"
 		const newTitle = "Демо · Собрать презентацию с Alina.AI"
-		changed := false
+		changed := seedDemoUsernames(state)
 		for i, g := range state.Guides {
 			if g.ID == "demo-v1-pending" && g.Title == oldTitle {
 				state.Guides[i].Title = newTitle
@@ -65,6 +86,7 @@ func (s *Storage) seedDemo() error {
 	for _, p := range profiles {
 		state.Accounts[p.ID] = p
 	}
+	seedDemoUsernames(state)
 	now := time.Now().UTC()
 	stamp := now.Add(-2 * time.Hour).Format(time.RFC3339)
 	steps := []models.Step{

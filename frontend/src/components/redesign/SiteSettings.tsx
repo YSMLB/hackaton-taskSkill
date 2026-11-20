@@ -2,7 +2,7 @@
 
 import { useId, useRef, useSyncExternalStore } from 'react';
 import { setAiEnabled, useAiEnabled } from '@/lib/ai-preference';
-import { accents, appearanceChanged, accentKey } from '@/lib/appearance';
+import { accents, appearanceChanged, accentKey, themeKey, themes } from '@/lib/appearance';
 import styles from './ProfilePage.module.css';
 
 function subscribe(callback: () => void) {
@@ -14,14 +14,15 @@ function subscribe(callback: () => void) {
   };
 }
 
-function setAccent(value: string) {
-  document.documentElement.dataset.accent = value;
-  try { localStorage.setItem(accentKey, value); } catch {}
+function setAppearance(setting: 'accent' | 'theme', value: string) {
+  document.documentElement.dataset[setting] = value;
+  try { localStorage.setItem(setting === 'accent' ? accentKey : themeKey, value); } catch {}
   window.dispatchEvent(new Event(appearanceChanged));
 }
 
 export function SiteSettings() {
   const accent = useSyncExternalStore(subscribe, () => document.documentElement.dataset.accent || 'blue', () => 'blue');
+  const theme = useSyncExternalStore(subscribe, () => document.documentElement.dataset.theme || 'system', () => 'system');
   const aiEnabled = useAiEnabled();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -30,10 +31,19 @@ export function SiteSettings() {
   return <div className={styles.panel}>
     <h2>Настройки сайта</h2>
     <fieldset className={styles.preferenceGroup}>
+      <legend>Тема оформления</legend>
+      <div className={styles.preferenceGrid}>
+        {themes.map(({ id, label }) => <label className={styles.preference} key={id}>
+          <input type="radio" name="site-theme" value={id} checked={theme === id} onChange={() => setAppearance('theme', id)} />
+          {label}
+        </label>)}
+      </div>
+    </fieldset>
+    <fieldset className={styles.preferenceGroup}>
       <legend>Акцентный цвет</legend>
       <div className={styles.preferenceGrid}>
         {accents.map(({ id, label }) => <label className={styles.preference} key={id}>
-          <input type="radio" name="site-accent" value={id} checked={accent === id} onChange={() => setAccent(id)} />
+          <input type="radio" name="site-accent" value={id} checked={accent === id} onChange={() => setAppearance('accent', id)} />
           <span className={styles.swatch} data-accent={id} aria-hidden="true" />
           {label}
         </label>)}

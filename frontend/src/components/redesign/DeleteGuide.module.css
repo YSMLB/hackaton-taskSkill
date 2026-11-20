@@ -1,11 +1,11 @@
 .actions { position: relative; z-index: 2; margin-inline-start: auto; flex: none; }
 .actions:has(.menu:not([hidden])) { z-index: 3; }
 .trigger { display: grid; place-items: center; min-width: 42px; min-height: 42px; border-radius: 10px; color: var(--muted); background: transparent; }
-.trigger:hover, .trigger[aria-expanded="true"] { color: var(--ink); background: var(--surface-soft); }
+.trigger:hover, .trigger[aria-expanded="true"] { color: var(--graphite); background: var(--surface-soft); }
 .menu { position: absolute; right: 0; top: calc(100% + 3px); width: max-content; padding: 4px; background: var(--white); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 5px 20px #14203620; }
-.menu button { display: flex; gap: 8px; align-items: center; padding: 10px 12px; color: #aa2222; background: transparent; border-radius: 6px; }
-.menu button:hover { background: #fff2f2; }
-.dialog { position: fixed; inset: 0; margin: auto; width: min(28rem, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: clamp(20px, 4vw, 32px); border: 1px solid var(--line); border-radius: 18px; background: var(--white); color: var(--ink); text-align: left; box-shadow: 0 20px 70px #111a322c; }
+.menu button { display: flex; gap: 8px; align-items: center; padding: 10px 12px; color: var(--danger); background: transparent; border-radius: 6px; }
+.menu button:hover { background: var(--danger-soft); }
+.dialog { position: fixed; inset: 0; margin: auto; width: min(28rem, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: clamp(20px, 4vw, 32px); border: 1px solid var(--line); border-radius: 18px; background: var(--white); color: var(--graphite); text-align: left; box-shadow: 0 20px 70px #111a322c; }
 .dialog::backdrop { background: #111a3280; }
 .dialog h2 { margin: 0; font-size: 1.45rem; line-height: 1.2; }
 .guideName { display: block; margin: 16px 0 8px; overflow-wrap: anywhere; }

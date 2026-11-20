@@ -18,7 +18,9 @@
 .memberAccess, .allGuides { font-size: .875rem; }
 .memberAccess { padding: 14px 18px; border-top: 1px solid var(--line); }
 .memberAccess summary, .allGuides summary { font-weight: 650; }
-.memberAccess > div { margin-top: 12px; }
+.memberAccess > div, .memberAccess > form { margin-top: 12px; }
+.memberAccess form { display: grid; gap: 12px; }
+.memberAccess form button { justify-self: start; }
 .memberAccess :global(.button) { white-space: normal; }
 .allGuides { margin-top: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--white); }
 .allGuides summary { padding: 16px 18px; }

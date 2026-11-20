@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type Dispatch, type SetStateAction } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type Dispatch, type RefObject, type SetStateAction } from 'react';
 
 type Screenshot = { name: string; url: string };
 type Turn = { question: string; answer: string; screenshot?: Screenshot };
@@ -20,7 +20,7 @@ type Threads = Record<string, Thread>;
 const Context = createContext<{
   threads: Threads;
   setThreads: Dispatch<SetStateAction<Threads>>;
-  requests: Map<string, AbortController>;
+  requests: RefObject<Map<string, AbortController>>;
 } | null>(null);
 
 export function MentorThreads({ account, children }: { account: string; children: ReactNode }) {
@@ -29,8 +29,11 @@ export function MentorThreads({ account, children }: { account: string; children
     try { return JSON.parse(sessionStorage.getItem(key) || '{}') ?? {}; }
     catch { return {}; }
   });
-  const requests = useRef(new Map<string, AbortController>()).current;
-  useEffect(() => () => { for (const controller of requests.values()) controller.abort(); }, [requests]);
+  const requests = useRef(new Map<string, AbortController>());
+  useEffect(() => {
+    const active = requests.current;
+    return () => { for (const controller of active.values()) controller.abort(); };
+  }, []);
   useEffect(() => {
     if (!account) return;
     // Keep images in memory. Large attachments must not displace the text history.

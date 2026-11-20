@@ -29,12 +29,22 @@ type chatMessage struct {
 	Content any    `json:"content"`
 }
 
-func chatCompletion(ctx context.Context, system string, user any, temperature float64, timeout time.Duration) (string, error) {
-	return completeMessages(ctx, []chatMessage{{"system", system}, {"user", user}}, temperature, timeout, "", 0, os.Getenv("AI_MODEL"))
-}
+const jsonObjectFormat = `{"type":"json_object"}`
 
 func chatCompletionJSON(ctx context.Context, system string, user any, temperature float64, timeout time.Duration) (string, error) {
-	return completeMessages(ctx, []chatMessage{{"system", system}, {"user", user}}, temperature, timeout, "json_object", 0, os.Getenv("AI_MODEL"))
+	return completeJSONMessages(ctx, []chatMessage{{"system", system}, {"user", user}}, temperature, timeout, jsonObjectFormat, 0, os.Getenv("AI_MODEL"))
+}
+
+func completeJSONMessages(ctx context.Context, messages []chatMessage, temperature float64, timeout time.Duration, format string, maxTokens int, model string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	content, err := completeMessages(ctx, messages, temperature, timeout, format, maxTokens, model)
+	var upstream *ModelHTTPError
+	if errors.As(err, &upstream) && (upstream.Status == 400 || upstream.Status == 422) {
+		// Older providers can produce JSON from the prompt but reject response_format.
+		return completeMessages(ctx, messages, temperature, timeout, "", maxTokens, model)
+	}
+	return content, err
 }
 
 func completeMessages(ctx context.Context, messages []chatMessage, temperature float64, timeout time.Duration, format string, maxTokens int, model string) (string, error) {
@@ -52,11 +62,11 @@ func completeMessages(ctx context.Context, messages []chatMessage, temperature f
 	}
 
 	type reqPayload struct {
-		Model          string            `json:"model"`
-		MaxTokens      int               `json:"max_tokens,omitempty"`
-		Messages       []chatMessage     `json:"messages"`
-		Temperature    float64           `json:"temperature"`
-		ResponseFormat map[string]string `json:"response_format,omitempty"`
+		Model          string          `json:"model"`
+		MaxTokens      int             `json:"max_tokens,omitempty"`
+		Messages       []chatMessage   `json:"messages"`
+		Temperature    float64         `json:"temperature"`
+		ResponseFormat json.RawMessage `json:"response_format,omitempty"`
 	}
 
 	payload := reqPayload{
@@ -66,7 +76,7 @@ func completeMessages(ctx context.Context, messages []chatMessage, temperature f
 		MaxTokens:   maxTokens,
 	}
 	if format != "" {
-		payload.ResponseFormat = map[string]string{"type": format}
+		payload.ResponseFormat = json.RawMessage(format)
 	}
 
 	body, err := json.Marshal(payload)

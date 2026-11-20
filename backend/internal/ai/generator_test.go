@@ -3,12 +3,15 @@ package ai_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"stepflow/backend/internal/ai"
 	"stepflow/backend/internal/models"
+	"stepflow/backend/internal/provider"
 )
 
 func TestGenerateGuideVariants(t *testing.T) {
@@ -17,7 +20,7 @@ func TestGenerateGuideVariants(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		content := `{"variants":[
+		content := `{"safety":"allow","variants":[
 			{"title":"Короткий отчёт","steps":[{"title":"Запиши результат","text":"Запиши числа в таблицу."}]},
 			{"title":"Пустой ответ","steps":[]},
 			{"title":"Отчёт с образцом","steps":[{"title":"Скачай образец","text":"Возьми шаблон отчёта."}]},
@@ -41,6 +44,30 @@ func TestGenerateGuideVariants(t *testing.T) {
 	if len(variants) != 3 || variants[1].Title != "Отчёт с образцом" ||
 		variants[2].Steps[0].Title != "Сверь данные" || variants[0].ID == variants[1].ID {
 		t.Fatalf("unexpected variants: %+v", variants)
+	}
+}
+
+func TestBlockedSupplementWithholdsDrafts(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct{ Messages []struct{ Content string } }
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || len(request.Messages) != 2 {
+			t.Error("missing messages")
+			return
+		}
+		body := `{"safety":"block","title":"PRIVATE_TEST_MARKER"}`
+		if !strings.Contains(request.Messages[1].Content, "Уже предложено") {
+			body = `{"safety":"allow","variants":[{"title":"А","steps":[{"title":"Шаг"}]},{"title":"Б","steps":[{"title":"Шаг"}]}]}`
+		}
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": body}}}})
+	}))
+	defer mock.Close()
+	t.Setenv("AI_BASE_URL", mock.URL)
+	t.Setenv("AI_API_KEY", "test")
+	t.Setenv("AI_MODEL", "test")
+
+	variants, err := ai.GenerateGuideVariants(context.Background(), "Подготовить отчёт", "", 15, nil)
+	if !errors.Is(err, provider.ErrContentBlocked) || len(variants) != 0 {
+		t.Fatal("blocked supplemental response must withhold all drafts")
 	}
 }
 

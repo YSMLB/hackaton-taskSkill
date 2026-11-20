@@ -5,6 +5,7 @@ import { DeleteGuide } from './DeleteGuide';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { ArrowLeft, ChevronRight, FileText, Plus } from 'lucide-react';
+import type { UserMatch } from '@shared/workspace-data';
 import { actorId, publicationLabels } from '@shared/community';
 import { RegistrationGate, WorkShell } from './Chrome';
 import { ProfileAvatar } from './ProfileAvatar';
@@ -72,7 +73,7 @@ function Overview({ userId }: { userId: string }) {
           <ProfileAvatar name={member.name} size={36} />
           <span className={styles.details}>
             <strong>{member.name}{member.id === userId && <span> · Ты</span>}</strong>
-            <span>{member.id === team.ownerId ? 'Владелец' : 'Участник'}</span>
+            <span>{member.username && `@${member.username} · `}{member.id === team.ownerId ? 'Владелец' : 'Участник'}</span>
           </span>
           {team.active && team.ownerId === userId && member.id !== userId &&
             <button type="button" className="text-button" disabled={pending} aria-label={`Отозвать доступ: ${member.name}`} onClick={async () => {
@@ -101,21 +102,34 @@ function Overview({ userId }: { userId: string }) {
 
 function MemberAccess({ teamId }: { teamId: string }) {
   const { send, pending, notify } = useStore();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [match, setMatch] = useState<UserMatch | null>(null);
   async function addMember() {
-    if (await send({ type: 'team-member', teamId, email })) {
-      setEmail('');
+    if (!match) return;
+    if (await send({ type: 'team-member', teamId, username: match.username, selection: match.selection })) {
+      setUsername('');
       notify('Доступ выдан');
     }
+    setMatch(null);
   }
   return <details className={styles.memberAccess}>
     <summary>Добавить участника</summary>
-    <div className="field">
-      <label htmlFor="team-member-email">Email участника</label>
-      <input id="team-member-email" type="email" value={email} onChange={event => setEmail(event.target.value)} />
-    </div>
-    <div className="utility-actions">
-      <button type="button" className="button button-dark" disabled={pending || !email.trim()} onClick={() => void addMember()}>Добавить</button>
-    </div>
+    <form onSubmit={async event => {
+      event.preventDefault();
+      if (pending) return;
+      setMatch(null);
+      const result = await send({ type: 'team-member-search', teamId, username });
+      setMatch(result?.memberMatch ?? null);
+    }}>
+      <div className="field">
+        <label htmlFor="team-member-username">Юзернейм участника</label>
+        <input id="team-member-username" placeholder="@alex_01" autoCapitalize="none" spellCheck={false} required maxLength={31} pattern="@?[A-Za-z0-9_]{3,30}" disabled={pending} value={username} onChange={event => { setUsername(event.target.value); setMatch(null); }} />
+      </div>
+      <button type="submit" className="button button-outline" disabled={pending || !username.trim()}>Найти участника</button>
+    </form>
+    {match && <div className="utility-actions">
+      <span role="status">{match.name} · @{match.username}</span>
+      <button type="button" className="button button-dark" disabled={pending} onClick={() => void addMember()}>Добавить в команду</button>
+    </div>}
   </details>;
 }

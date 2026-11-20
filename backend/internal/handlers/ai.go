@@ -68,6 +68,9 @@ func (s *Server) HandleGenerateGuide(w http.ResponseWriter, r *http.Request) {
 	}
 
 	variants, err := ai.GenerateGuideVariants(r.Context(), prompt, req.Category, req.Minutes, profile)
+	if s.writeContentRefusal(w, err) {
+		return
+	}
 	if errors.Is(err, provider.ErrBusy) {
 		s.writeHintError(w, err, false)
 		return
@@ -88,4 +91,15 @@ func (s *Server) HandleGenerateGuide(w http.ResponseWriter, r *http.Request) {
 	}, map[string]string{
 		"Cache-Control": "private, no-store",
 	})
+}
+
+func (s *Server) writeContentRefusal(w http.ResponseWriter, err error) bool {
+	if !errors.Is(err, provider.ErrContentBlocked) {
+		return false
+	}
+	s.writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
+		"code":    "AI_CONTENT_BLOCKED",
+		"message": "Alina.AI не может помочь с этим запросом. Можно спросить о безопасности или профилактике.",
+	}, map[string]string{"Cache-Control": "private, no-store"})
+	return true
 }

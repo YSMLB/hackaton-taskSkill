@@ -152,16 +152,24 @@ func changeAccount(state *models.State, profile *models.Profile, kind string, co
 		name := textValidation(command["name"], 100, true)
 		state.Teams = append(state.Teams, models.Team{ID: RandomUUID(), Name: name, Active: true, OwnerID: actor, MemberIDs: []string{actor}})
 	case "team-member":
-		team := memberTeam(state, validateGuideID(command["teamId"]), actor)
-		requireCondition(team != nil && team.Active && team.OwnerID == actor, "Изменять состав может владелец активной команды.", 403)
+		team := teamForOwner(state, command, actor)
 		var id string
-		if command["remove"] == true && command["memberId"] != nil {
+		if command["remove"] == true {
 			id = textValidation(command["memberId"], 300, true)
+			for _, stored := range team.MemberIDs {
+				if rosterID(stored, actor) == id {
+					id = stored
+					break
+				}
+			}
 			requireCondition(id != actor && slices.Contains(team.MemberIDs, id), "Участника нет в команде или это её владелец.")
 		} else {
-			member := findAccount(state, textValidation(command["email"], 254, true))
-			requireCondition(member != nil && models.ActorID(*member) != actor, "Укажи email другого участника.")
+			member := teamCandidate(state, command["username"])
+			requireCondition(models.ActorID(*member) != actor, "Ты уже владелец этой команды.", 409)
 			id = models.ActorID(*member)
+			if selection, ok := command["selection"]; ok {
+				requireCondition(selection == Digest(id), "Юзернейм сменил владельца. Повтори поиск.", 409)
+			}
 		}
 		index := slices.Index(team.MemberIDs, id)
 		if command["remove"] == true {

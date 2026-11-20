@@ -15,8 +15,8 @@ func TestSearchResponseFormat(t *testing.T) {
 		plainOnly bool
 		response  string
 	}{
-		{"JSON object", false, `{"terms":["chart","figure"]}`},
-		{"plain chat provider", true, `{"terms":["chart","figure"]}`},
+		{"JSON object", false, `{"safety":"allow","terms":["chart","figure"]}`},
+		{"plain chat provider", true, `{"safety":"allow","terms":["chart","figure"]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0

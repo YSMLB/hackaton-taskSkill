@@ -69,9 +69,10 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
 
   async function send(message: string) {
     const stepId = threadKey;
-    if (requests.has(stepId) || thread.reading) return;
+    const active = requests.current;
+    if (active.has(stepId) || thread.reading) return;
     const controller = new AbortController();
-    requests.set(stepId, controller);
+    active.set(stepId, controller);
     update(stepId, { sending: message, question: '', error: '' });
     const timeout = setTimeout(() => controller.abort(), 100_000);
     try {
@@ -103,7 +104,7 @@ export function MentorChat({ guide, step, open = true, id, onClose }: MentorChat
       });
     } finally {
       clearTimeout(timeout);
-      requests.delete(stepId);
+      active.delete(stepId);
       update(stepId, { sending: undefined });
     }
   }

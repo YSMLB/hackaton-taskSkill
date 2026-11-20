@@ -16,7 +16,7 @@ func TestPersonalQuotaAndPlusTrial(t *testing.T) {
 	}
 	defer db.Close()
 	type payload = map[string]any
-	login, token, err := db.ChangeWorkspace("", []byte(`{"type":"login","email":"quota@example.test"}`))
+	login, token, err := db.ChangeWorkspace("", []byte(`{"type":"register","profile":{"email":"quota@example.test","name":"Quota","username":"quota"}}`))
 	if err != nil {
 		t.Fatal(err)
 	}

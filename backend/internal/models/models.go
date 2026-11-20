@@ -19,6 +19,7 @@ const (
 )
 
 type Profile struct {
+	Username         string `json:"username,omitempty"`
 	PlusTrialUsed    bool   `json:"plusTrialUsed,omitempty"`
 	PlusTrialEndsAt  int64  `json:"plusTrialEndsAt,omitempty"`
 	RoleBeforeExpert string `json:"roleBeforeExpert,omitempty"`
@@ -151,11 +152,18 @@ type WorkspaceSnapshot struct {
 	Data    WorkspaceData `json:"data"`
 }
 
+type UserMatch struct {
+	Selection string `json:"selection"`
+	Username  string `json:"username"`
+	Name      string `json:"name"`
+}
+
 type CommandResult struct {
-	Profile *Profile      `json:"profile"`
-	Data    WorkspaceData `json:"data"`
-	ID      string        `json:"id,omitempty"`
-	Count   *int          `json:"count,omitempty"`
+	MemberMatch *UserMatch    `json:"memberMatch,omitempty"`
+	Profile     *Profile      `json:"profile"`
+	Data        WorkspaceData `json:"data"`
+	ID          string        `json:"id,omitempty"`
+	Count       *int          `json:"count,omitempty"`
 }
 
 type AutoReviewAttempt struct {
@@ -261,8 +269,9 @@ type TeamSummary struct {
 	Members []TeamMember `json:"members"`
 }
 type TeamMember struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	Username string `json:"username,omitempty"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
 }
 type Notice struct {
 	ID        string `json:"id"`

@@ -99,5 +99,5 @@ dialog.aiDialog {
 .aiDialog h2 { margin: 0 0 12px; font-size: 1.5rem; }
 .aiDialog p { margin: 0 0 14px; }
 .aiDialogActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-.aiDialogActions .aiDisable { background: var(--danger); color: #fff; }
-.aiDialogActions .aiDisable:hover { background: var(--danger); color: #fff; filter: brightness(.9); }
+.aiDialogActions .aiDisable { background: var(--danger-fill); color: #fff; }
+.aiDialogActions .aiDisable:hover { background: var(--danger-fill); color: #fff; filter: brightness(.9); }

@@ -211,6 +211,9 @@ func (s *Server) HandleSearchPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ids, err := search.PerformAISearch(r.Context(), query, sanitizedCandidates)
+	if s.writeContentRefusal(w, err) {
+		return
+	}
 	if err != nil {
 		s.writeJSON(w, http.StatusBadGateway, map[string]string{
 			"message": "ИИ-поиск не ответил или вернул непонятный результат. Поиск по словам остаётся доступен.",

@@ -48,6 +48,7 @@ a[href], select, summary, label:has(input[type="checkbox"]), label:has(input[typ
   --rail-border: #ffffff40;
   --shadow: #0f172a20;
   --danger: #a9231c;
+  --danger-fill: #a9231c;
   --danger-soft: #fef0ee;
   --danger-border: #e6b2ad;
   --warning: #725a1c;
@@ -92,6 +93,28 @@ a[href], select, summary, label:has(input[type="checkbox"]), label:has(input[typ
   --accent-text: #9f1239;
   --action: #be123c;
   --action-hover: #9f1239;
+}
+:root[data-color-scheme="dark"] {
+  color-scheme: dark;
+  --paper: #0e1623;
+  --white: #172232;
+  --graphite: #edf3fc;
+  --muted: #b1bfd2;
+  --line: #3a485d;
+  --line-strong: #8595ac;
+  --surface-soft: #222f42;
+  --surface-hover: #ffffff0e;
+  --inverse: #090e17;
+  --shadow: #00000048;
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--white));
+  --accent-border: color-mix(in srgb, var(--accent) 45%, #b5c7df);
+  --accent-text: color-mix(in srgb, var(--accent) 32%, white);
+  --action: var(--accent-text);
+  --danger: #ffaaa2;
+  --danger-soft: #39242c;
+  --danger-border: #885451;
+  --warning: #f2cd7c;
+  --warning-soft: #342c19;
 }
 *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:104px}body{margin:0;background:var(--paper);color:var(--graphite);font-family:var(--font-manrope),Arial,sans-serif;font-size:0.9375rem;line-height:1.6}button,input,textarea,select{font:inherit}a{color:inherit;text-decoration:none}button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}button,input,textarea,select{color:inherit}button{background:none}button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--action);outline-offset:4px}input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--graphite);outline-offset:3px}h1,h2,h3,p{margin:0}h1,h2,h3{font-weight:600;line-height:1.15;letter-spacing:-.045em}p{line-height:1.7}svg{flex-shrink:0}::selection{background:var(--accent-border)}section[id]{scroll-margin-top:102px}.section-container{width:min(1280px,calc(100% - 112px));margin-inline:auto}.muted{color:var(--muted)}.section-label{font-size:0.8125rem;color:var(--muted);font-weight:600;letter-spacing:0;display:inline-block}.pill{display:inline-flex;align-items:center;border-radius:7px;background:var(--surface-soft);padding:5px 10px;font-size:0.8125rem;font-weight:600}.pill.light{background:#ffffff14;color:var(--on-inverse)}.small-note,.field-hint{font-size:0.8125rem;color:var(--muted);line-height:1.6}.small-note{margin-top:12px}.status-dot{display:inline-block;width:7px;height:7px;background:var(--accent);border-radius:50%;flex-shrink:0}.button{display:inline-flex;align-items:center;justify-content:center;gap:10px;border:1px solid transparent;border-radius:10px;min-height:46px;padding:11px 19px;font-size:0.875rem;font-weight:600;line-height:1.3;transition:background .15s,color .15s}.button:hover{filter:brightness(.95)}.button-red{background:var(--action);color:var(--on-inverse)}.button-dark{background:var(--inverse);color:var(--on-inverse)}.button-outline{border-color:var(--line);color:var(--graphite);background:transparent}.text-button{border:0;padding:9px 0;display:inline-flex;align-items:center;gap:8px;font-size:0.875rem;font-weight:600;min-height:44px}.icon-button{border:0;width:40px;height:40px;border-radius:9px;display:inline-grid;place-items:center}.icon-button:hover{background:var(--shadow)}.skip-link{position:fixed;left:16px;top:12px;z-index:99;transform:translateY(-180%);padding:10px 16px;background:var(--inverse);color:var(--on-inverse);border-radius:8px}.skip-link:focus{transform:translateY(0)}
 /* Navigation */
@@ -247,6 +270,7 @@ body:has(.account-dialog[open]){overflow:hidden}
 .problem-row .progress-track>span { background: var(--danger); }
 .moderation-notice.rejected { border-left-color: var(--danger); }
 .cover-upload { color: var(--accent-text); }
+.round-link:hover { background: var(--action-fill); color: var(--on-action); }
 .cover-upload:focus-within { outline-color: var(--action); }
 
 /* Shared accent for help, notifications and expert status. */

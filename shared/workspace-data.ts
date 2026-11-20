@@ -13,7 +13,8 @@ export interface Report { id: string; guideId: string; stepId: string; text: str
 export interface ExpertReview { guideId: string; expertId: string; expertName: string; verified: boolean; text: string; createdAt: string }
 export interface StepMetric { stepId: string; started: number; completed: number; stopped: number; questions: number; questionAuthors?: number }
 export interface GuideMetrics { started: number; completed: number; reports: Report[]; steps: StepMetric[] }
-export interface TeamMember { id: string; name: string }
+export interface TeamMember { id: string; name: string; username?: string }
+export interface UserMatch { name: string; username: string; selection: string }
 export interface Team { id: string; name: string; ownerId: string; memberIds: string[]; active: boolean; members?: TeamMember[] }
 export interface Notice { id: string; text: string; href: string; read: boolean; createdAt: string }
 export interface ModerationDecision {
@@ -34,13 +35,13 @@ export interface WorkspaceData {
   reviews: ExpertReview[];
   analytics: Record<string, GuideMetrics>;
 }
-export type ProfileEdits = Pick<Profile, 'name' | 'email' | 'avatar' | 'bio'>;
+export type ProfileEdits = Pick<Profile, 'name' | 'email' | 'username' | 'avatar' | 'bio'>;
 export interface WorkspaceSnapshot { profile: Profile | null; data: WorkspaceData }
 export const emptyWorkspace: WorkspaceData = { teams: [], notices: [], guides: [], runs: {}, votes: {}, comments: [], reviews: [], analytics: {} };
 export const defaultRun = (): Run => ({ current: 0, checked: {}, completed: [], visited: [] });
 
 export type Command =
-  | { type: 'register'; profile: ProfileEdits & { role: string } }
+  | { type: 'register'; profile: ProfileEdits & { role: string; username: string } }
   | { type: 'login'; email: string }
   | { type: 'logout' }
   | { type: 'start-plus-trial' }
@@ -48,7 +49,8 @@ export type Command =
   | { type: 'expert'; email: string; enabled: boolean }
   | { type: 'admin'; email: string }
   | { type: 'team-create'; name: string }
-  | { type: 'team-member'; teamId: string; email: string; remove?: boolean }
+  | { type: 'team-member-search'; teamId: string; username: string }
+  | { type: 'team-member'; teamId: string; username: string; selection?: string }
   | { type: 'team-member'; teamId: string; memberId: string; remove: true }
   | { type: 'notices-read'; id: string } | { type: 'notices-read'; ids: string[] }
   | { type: 'reply'; guideId: string; reportId: string; text: string }
@@ -65,4 +67,4 @@ export type Command =
   | { type: 'check'; guideId: string; stepId: string; index: number; checked: boolean }
   | { type: 'import'; guides: Instruction[] };
 
-export interface CommandResult extends WorkspaceSnapshot { id?: string; count?: number }
+export interface CommandResult extends WorkspaceSnapshot { id?: string; count?: number; memberMatch?: UserMatch }

@@ -76,9 +76,9 @@ func TestHandlersFlow(t *testing.T) {
 	regBody, _ := json.Marshal(map[string]any{
 		"type": "register",
 		"profile": map[string]any{
-			"email": "student@test.ru",
-			"name":  "Ученик Вася",
-			"role":  "Ученик",
+			"username": "student", "email": "student@test.ru",
+			"name": "Ученик Вася",
+			"role": "Ученик",
 		},
 	})
 	req = httptest.NewRequest(http.MethodPost, "/api/workspace", bytes.NewReader(regBody))
@@ -137,9 +137,9 @@ func TestHandlersFlow(t *testing.T) {
 	authorReg, _ := json.Marshal(map[string]any{
 		"type": "register",
 		"profile": map[string]any{
-			"email": "author_gen@test.ru",
-			"name":  "Автор Гена",
-			"role":  "Автор",
+			"username": "author_gen", "email": "author_gen@test.ru",
+			"name": "Автор Гена",
+			"role": "Автор",
 		},
 	})
 	req = httptest.NewRequest(http.MethodPost, "/api/workspace", bytes.NewReader(authorReg))
@@ -201,7 +201,7 @@ func TestHandlersFlow(t *testing.T) {
 					t.Errorf("missing %q in model request", content)
 				}
 			}
-			w.Write([]byte(`{"choices":[{"message":{"content":"Начни с задания и журнала опыта."}}]}`))
+			w.Write([]byte(`{"choices":[{"message":{"content":"{\"safety\":\"allow\",\"hint\":\"Начни с задания и журнала опыта.\"}"}}]}`))
 		}))
 		defer provider.Close()
 		t.Setenv("AI_BASE_URL", provider.URL+"/v1")

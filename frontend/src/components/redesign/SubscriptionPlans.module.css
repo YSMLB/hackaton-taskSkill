@@ -32,6 +32,30 @@
 .features li { display: flex; align-items: baseline; gap: 7px; }
 .features svg { color: var(--accent-text); }
 .plan button { margin-top: 4px; }
+.checkout {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(450px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: clamp(18px, 4vw, 30px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--white);
+  color: var(--graphite);
+}
+.checkout::backdrop { background: rgb(7 13 22 / 65%); }
+.checkout h2 { font-size: 1.45rem; }
+.checkout p { margin-top: 12px; color: var(--muted); font-size: .875rem; }
+.checkout .paymentError { color: var(--danger); }
+.receipt { margin-block: 18px; padding-block: 12px; border-block: 1px solid var(--line); }
+.receipt div { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; }
+.receipt div + div { margin-top: 8px; }
+.receipt dt { color: var(--muted); }
+.receipt dd { font-weight: 650; }
+.checkoutActions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+@media (max-width: 440px) { .checkoutActions { display: grid; } }
 .teamAccess { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; margin-block: 14px; }
 .teamAccess p { color: var(--muted); }
 
