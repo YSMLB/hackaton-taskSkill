@@ -114,7 +114,14 @@ func New(dbPath string) (*Storage, error) {
 		}
 	}
 
-	return &Storage{db: db, moderationWake: make(chan struct{}, 1)}, nil
+	store := &Storage{db: db, moderationWake: make(chan struct{}, 1)}
+	if os.Getenv("STEPFLOW_DEMO_DATA") == "1" {
+		if err := store.seedDemo(); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	return store, nil
 }
 
 func (s *Storage) Close() error {
@@ -223,7 +230,9 @@ func (s *Storage) profileFor(tx *sql.Tx, state *models.State, token string) *mod
 	if !ok {
 		return nil
 	}
-	if profile.Role == "Автор" { profile.Role = "Ученик" }
+	if profile.Role == "Автор" {
+		profile.Role = "Ученик"
+	}
 	return &profile
 }
 
