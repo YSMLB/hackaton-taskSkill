@@ -1,3 +1,4 @@
+import offlineExample from '../../public/offline-example.json';
 import type { Instruction } from '@shared/community';
 
 const key = 'stepflow-offline-guides-v1';
@@ -9,7 +10,9 @@ export interface OfflineGuide {
 
 export function offlineGuides(): OfflineGuide[] {
   try {
-    const value = JSON.parse(localStorage.getItem(key) || '[]');
+    const stored = localStorage.getItem(key);
+    if (stored === null) return offlineExample;
+    const value = JSON.parse(stored);
     return Array.isArray(value) ? value : [];
   } catch { return []; }
 }

@@ -50,6 +50,53 @@ func TestNoticeDeliveryAcrossAccounts(t *testing.T) {
 		t.Helper()
 		send(token, command{"type": "comment", "guideId": guide, "stepId": "demo-v1-step-" + step, "text": "Комментарий"})
 	}
+	t.Run("catalog votes and article views", func(t *testing.T) {
+		const guideID = "demo-catalog-binary"
+		const commentID = "demo-binary-comment-2"
+		snapshot := func(token string) *models.WorkspaceSnapshot {
+			snapshot, err := db.ReadWorkspace(token)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return snapshot
+		}
+		before := snapshot(owner).Data.Analytics[guideID]
+		for range 2 {
+			send(admin, command{"type": "view", "guideId": guideID})
+		}
+		send(admin, command{"type": "visit", "guideId": guideID, "stepId": "prepare"})
+		after := snapshot(owner).Data.Analytics[guideID]
+		if after.Views != before.Views+1 || after.Comments != 3 {
+			t.Fatal("unexpected article counts", after.ArticleCounts)
+		}
+		if _, ok := snapshot(reader).Data.Analytics[guideID]; ok {
+			t.Fatal("reader received owner metrics")
+		}
+		for _, vote := range []string{"helpful", "helpful", "unhelpful", ""} {
+			send(admin, command{"type": "comment-vote", "guideId": guideID, "commentId": commentID, "value": vote})
+			comments := snapshot(admin).Data.Comments
+			i := slices.IndexFunc(comments, func(c models.StepComment) bool { return c.ID == commentID })
+			if i < 0 {
+				t.Fatal("missing comment")
+			}
+			c := comments[i]
+			likes, dislikes := 0, 0
+			if vote == "helpful" {
+				likes = 1
+			}
+			if vote == "unhelpful" {
+				dislikes = 1
+			}
+			if c.Likes != likes || c.Dislikes != dislikes || string(c.MyVote) != vote || c.Reactions != nil {
+				t.Fatal("wrong reaction summary", c)
+			}
+		}
+		posts := snapshot(admin).Data.Moderation.Posts
+		i := slices.IndexFunc(posts, func(p models.PostStats) bool { return p.ID == guideID })
+		if i < 0 || posts[i].ArticleCounts != after.ArticleCounts {
+			t.Fatal("admin and owner metrics differ")
+		}
+	})
 	t.Run("step participants and unread race", func(t *testing.T) {
 		const guide = "demo-v1-published"
 		comment(expert, guide, "3")
@@ -74,6 +121,21 @@ func TestNoticeDeliveryAcrossAccounts(t *testing.T) {
 		now := inbox(reader)
 		if now[0].Read || slices.ContainsFunc(now[1:], func(n models.Notice) bool { return !n.Read }) {
 			t.Fatal("bulk read must apply to the displayed snapshot only")
+		}
+	})
+	t.Run("mention teammate on a new step", func(t *testing.T) {
+		send(reader, command{"type": "profile", "edits": command{"name": "Маша", "email": "learner@stepflow.test", "username": "masha"}})
+		before := len(inbox(reader))
+		action := command{"type": "comment", "guideId": "demo-v1-published", "stepId": "demo-v1-step-3", "text": "mail@masha.ru"}
+		send(owner, action)
+		if len(inbox(reader)) != before {
+			t.Fatal("email produced a mention")
+		}
+		action["text"] = "@Masha, посмотри, @masha"
+		send(owner, action)
+		after := inbox(reader)
+		if len(after) != before+1 || !strings.Contains(after[0].Text, "зовёт тебя") || !strings.Contains(after[0].Href, "step=demo-v1-step-3#comment-") {
+			t.Fatal("expected one mention with the step and comment link")
 		}
 	})
 	t.Run("team access and removal", func(t *testing.T) {

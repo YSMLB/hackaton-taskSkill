@@ -29,6 +29,7 @@ const (
 )
 
 var (
+	stepMention  = regexp.MustCompile(`(?:^|[^\pL\pN_@])@([A-Za-z0-9_]+)`)
 	tokenRegex   = regexp.MustCompile(`^[a-f0-9]{64}$`)
 	guideIDRegex = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 	avatarRegex  = regexp.MustCompile(`^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$`)
@@ -300,6 +301,7 @@ func requirePersonalSlot(state *models.State, profile *models.Profile) {
 
 func deleteGuide(state *models.State, id string) {
 	state.Guides = slices.DeleteFunc(state.Guides, func(g models.Instruction) bool { return g.ID == id })
+	delete(state.LinkedReaders, id)
 	delete(state.Runs, id)
 	delete(state.Votes, id)
 	delete(state.AutoReviews, id)
@@ -547,7 +549,25 @@ func computeMetrics(state *models.State, guide models.Instruction) models.GuideM
 		}
 	}
 
-	return models.GuideMetrics{
+	counts := models.ArticleCounts{Views: len(runs)}
+	for reader := range state.LinkedReaders[guide.ID] {
+		if _, seen := guideRunsMap[reader]; !seen && reader != guide.OwnerID {
+			counts.Views++
+		}
+	}
+	for _, v := range state.Votes[guide.ID] {
+		if v == models.VoteHelpful {
+			counts.Likes++
+		} else if v == models.VoteUnhelpful {
+			counts.Dislikes++
+		}
+	}
+	for _, c := range state.Comments {
+		if c.GuideID == guide.ID {
+			counts.Comments++
+		}
+	}
+	return models.GuideMetrics{ArticleCounts: counts,
 		Started:   len(startedRuns),
 		Completed: completedCount,
 		Reports:   reports,
@@ -650,6 +670,15 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 	filteredComments := []models.StepComment{}
 	for _, c := range state.Comments {
 		if publicIDs[c.GuideID] {
+			for _, vote := range c.Reactions {
+				if vote == models.VoteHelpful {
+					c.Likes++
+				} else if vote == models.VoteUnhelpful {
+					c.Dislikes++
+				}
+			}
+			c.MyVote = c.Reactions[actor]
+			c.Reactions = nil
 			filteredComments = append(filteredComments, c)
 		}
 	}
@@ -678,7 +707,7 @@ func buildSnapshot(state *models.State, profile *models.Profile) models.Workspac
 			if !ok {
 				metrics = computeMetrics(state, g)
 			}
-			moderation.Posts = append(moderation.Posts, models.PostStats{ID: g.ID, Title: g.Title, Started: metrics.Started, Completed: metrics.Completed, Reports: metrics.Reports})
+			moderation.Posts = append(moderation.Posts, models.PostStats{ArticleCounts: metrics.ArticleCounts, ID: g.ID, Title: g.Title, Started: metrics.Started, Completed: metrics.Completed, Reports: metrics.Reports})
 		}
 		if state.AutoModeration && !provider.Configured() {
 			moderation.PausedReason = "Автопроверка приостановлена. Проверьте настройки ИИ-сервиса на сервере."
@@ -1146,6 +1175,34 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			break
 		}
 
+		if cmdType == "view" {
+			if actor != guide.OwnerID {
+				if state.LinkedReaders == nil {
+					state.LinkedReaders = map[string]map[string]bool{}
+				}
+				if state.LinkedReaders[key] == nil {
+					state.LinkedReaders[key] = map[string]bool{}
+				}
+				state.LinkedReaders[key][actor] = true
+			}
+			break
+		}
+		if cmdType == "comment-vote" {
+			i := slices.IndexFunc(state.Comments, func(c models.StepComment) bool { return c.GuideID == key && c.ID == command["commentId"] })
+			requireCondition(i >= 0, "Комментарий не найден.", 404)
+			value, ok := command["value"].(string)
+			requireCondition(ok && (value == "" || value == string(models.VoteHelpful) || value == string(models.VoteUnhelpful)), "Неизвестная оценка.")
+			c := &state.Comments[i]
+			if c.Reactions == nil {
+				c.Reactions = map[string]models.Vote{}
+			}
+			if value == "" {
+				delete(c.Reactions, actor)
+			} else {
+				c.Reactions[actor] = models.Vote(value)
+			}
+			break
+		}
 		if cmdType == "vote" {
 			val, _ := command["value"].(string)
 			requireCondition(val == string(models.VoteHelpful) || val == string(models.VoteUnhelpful), "Неизвестная оценка.")
@@ -1209,16 +1266,34 @@ func (s *Storage) ChangeWorkspace(token string, input []byte) (result *models.Co
 			entryID := RandomUUID()
 
 			if cmdType == "comment" {
-				recipients := map[string]bool{guide.OwnerID: true}
+				recipients := map[string]bool{guide.OwnerID: false}
 				for _, comment := range state.Comments {
 					if comment.GuideID == key && comment.StepID == step.ID {
-						recipients[comment.AuthorID] = true
+						recipients[comment.AuthorID] = false
 					}
 				}
 				href := "/guide?" + url.Values{"id": {key}, "step": {step.ID}}.Encode() + "#comment-" + entryID
-				for recipient := range recipients {
+				names := map[string]bool{}
+				for _, match := range stepMention.FindAllStringSubmatch(content, -1) {
+					names[strings.ToLower(match[1])] = true
+				}
+				for _, team := range state.Teams {
+					if len(names) == 0 || !team.Active || !slices.Contains(team.MemberIDs, actor) || (guide.TeamID != "" && team.ID != guide.TeamID) {
+						continue
+					}
+					for _, id := range team.MemberIDs {
+						if member, ok := state.Accounts[id]; ok && names[member.Username] {
+							recipients[id] = true
+						}
+					}
+				}
+				for recipient, mentioned := range recipients {
 					if canReceiveGuideNotice(state, guide, recipient) {
-						notify(state, recipient, actor, "Комментарий к «"+guide.Title+"», шаг «"+step.Title+"»", href)
+						message := "Комментарий к «" + guide.Title + "», шаг «" + step.Title + "»"
+						if mentioned {
+							message = current.Name + " зовёт тебя на шаг «" + step.Title + "» в инструкции «" + guide.Title + "»"
+						}
+						notify(state, recipient, actor, message, href)
 					}
 				}
 				state.Comments = append(state.Comments, models.StepComment{

@@ -134,7 +134,7 @@ export function Catalog({ screen, embedded = false, initialAuthorFilter = 'all' 
     <form className="catalog-tools" onSubmit={e => { e.preventDefault(); void aiSearch(); }}><label className="search-field"><Search size={19} /><input maxLength={500} aria-label="Поиск инструкций" placeholder="Название, задача или инструмент" value={query} onChange={e => changeQuery(e.target.value)} />{query && <button type="button" className="icon-button" onClick={() => changeQuery('')} aria-label="Очистить поиск"><X size={17} /></button>}</label>{aiSearchEnabled && <button type="submit" className="button button-dark ai-search-button" disabled={!aiReady || !hasSearchTerms(query) || busy}>{busy ? 'Ищем…' : 'Найти с ИИ'}</button>}</form>
     {aiSearchEnabled && <div className="search-status" aria-live="polite">{(query.trim() && !hasSearchTerms(query) ? 'Введи название или опиши задачу словами.' : aiMessage) || (!aiReady ? 'ИИ-поиск пока не подключён. Работает поиск по словам и синонимам.' : 'Опиши задачу своими словами и нажми «Найти с ИИ».')}{currentAi && <button className="text-button" onClick={() => { setAiResult(null); setAiMessage(''); }}>Искать по словам</button>}</div>}
     <div className="catalog-filter-row">
-      <div className="category-filters">{categories.map(c => <button key={c} className={c === category ? 'active' : ''} aria-pressed={c === category} onClick={() => changeCategory(c)}>{c}</button>)}</div>
+      <div className="category-filters topic-filters" role="group" aria-label="Темы инструкций">{categories.map(c => <button key={c} className={c === category ? 'active' : ''} aria-pressed={c === category} onClick={() => changeCategory(c)}>{c} <small>{c === 'Все' ? base.length : base.filter(g => g.category === c).length}</small></button>)}</div>
       <div className="catalog-filter-meta">
         <span className="muted">Найдено: {filtered.length}</span>
         {screen === 'catalog' && <label className="sort-field">
@@ -204,6 +204,13 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
     if (anchor) document.getElementById(anchor)?.scrollIntoView({ block: 'nearest' });
   }, [linkedStep, step?.id]);
   const initialVisit = useRef(Boolean(linkedStep && !openMentor));
+  const recordedLink = useRef(false);
+  useEffect(() => {
+    if (published && linkedStep && !openMentor && !recordedLink.current) {
+      recordedLink.current = true;
+      void send({ type: 'view', guideId: guide.id });
+    }
+  }, [published, linkedStep, openMentor, send, guide.id]);
   function closeMentor() {
     setMentorOpen(false);
     mentorTrigger.current?.focus();
@@ -307,7 +314,7 @@ function Player({ guide, openMentor = false }: { guide: Instruction; openMentor?
           </div>
         </aside>
         <article className="player-step">
-          <div className="step-topline"><span className="pill">Шаг {current + 1}</span><span className="muted">{guide.category}</span></div>
+          <div key={step.id} className="step-topline"><span className="pill">Шаг {current + 1}</span><span className="muted">{guide.category}</span></div>
           <h2>{step.title}</h2>
           <p className="step-text">{step.text}</p>
           <StepMedia step={step} />

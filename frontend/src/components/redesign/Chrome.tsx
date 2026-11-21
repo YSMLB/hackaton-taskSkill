@@ -4,7 +4,7 @@ import { useAiEnabled } from '@/lib/ai-preference';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type RefObject } from 'react';
-import { ArrowUpRight, Check, ChevronsLeft, ChevronsRight, CreditCard, Download, LayoutGrid, Menu, MessageSquareText, Plus, ShieldCheck, UserRound, Users, X } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronsLeft, ChevronsRight, CreditCard, Download, LayoutGrid, Ellipsis, MessageSquareText, Plus, ShieldCheck, UserRound, Users, X } from 'lucide-react';
 import { useStore } from './store';
 import { RegistrationForm, type AuthMode } from './RegistrationForm';
 import { isAdmin } from '@shared/community';
@@ -43,13 +43,13 @@ function AccountDialog({ dialogRef, mode = 'register', onModeChange }: { dialogR
 }
 
 export function LandingHeader({ dock = false }: { dock?: boolean }) {
-  const { menu, setMenu, menuButton } = useHeaderMenu();
+
   const { profile } = useStore();
   const [mode, setMode] = useState<AuthMode>('register');
   const [atFooter, setAtFooter] = useState(false);
   const footer = useRef<HTMLElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  function openAccount(nextMode: AuthMode = 'register') { setMode(nextMode); setMenu(false); dialog.current?.showModal(); }
+  function openAccount(nextMode: AuthMode = 'register') { setMode(nextMode); dialog.current?.showModal(); }
 
   useEffect(() => {
     if (!dock || !footer.current) return;
@@ -66,13 +66,9 @@ export function LandingHeader({ dock = false }: { dock?: boolean }) {
       {!dock && <nav className="desktop-nav" aria-label="О платформе"><Link href="/#advantages">Почему StepFlow</Link><Link href="/#demo">Демо</Link></nav>}
       <div className="header-actions">
         {profile ? <><Link className={`text-button ${styles.landingLogin}`} href="/profile"><UserRound size={17} />Профиль</Link><Link className="button button-dark header-cta" href="/catalog">Открыть каталог <ArrowUpRight size={17} /></Link></> : <><button className={`text-button ${styles.landingLogin}`} onClick={() => openAccount('login')}>Войти</button><button className="button button-dark header-cta" onClick={() => openAccount('register')}>Регистрация <ArrowUpRight size={17} /></button></>}
-        <button ref={menuButton} className="icon-button mobile-menu-button" aria-label={menu ? 'Закрыть меню' : 'Открыть меню'} aria-expanded={menu} aria-controls="landing-mobile-nav" onClick={() => setMenu(!menu)}>{menu ? <X /> : <Menu />}</button>
       </div>
     </div>
-    {menu && <nav className="mobile-nav" id="landing-mobile-nav" aria-label="Мобильная навигация лендинга" onClick={() => setMenu(false)}>
-      <Link href="/#advantages">Почему StepFlow</Link><Link href="/#demo">Попробовать демо</Link><Link href="/#subscriptions">Подписки</Link>
-      {profile ? <><Link href="/catalog">Открыть каталог</Link><Link href="/profile">Мой профиль</Link></> : <><button onClick={() => openAccount('login')}>Войти</button><button onClick={() => openAccount('register')}>Регистрация</button></>}
-    </nav>}
+    <nav className={styles.landingTabs} aria-label="Разделы лендинга"><Link href="/#advantages">О платформе</Link><Link href="/#demo">Демо</Link><Link href="/#subscriptions">Подписки</Link></nav>
   </div>;
 
   return <>
@@ -191,11 +187,16 @@ export function WorkShell({ active, children }: { active: AppSection; children: 
 
   return <div className={styles.shell} style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties} data-collapsed={collapsed} data-resizing={dragWidth !== null}>
     <a href="#main-content" className="skip-link">К содержимому</a>
-    <button ref={menuButton} type="button" className={styles.appMenuButton}
+    <nav className={styles.mobileTabs} aria-label="Основная навигация" onClick={event => { if ((event.target as Element).closest('a')) setMenu(false); }}>
+      <Link href="/catalog" aria-current={active === 'catalog' ? 'page' : undefined}><LayoutGrid size={20} />Каталог</Link>
+      <a href="/offline"><Download size={20} />Офлайн</a>
+      <Link href="/profile" aria-current={personal ? 'page' : undefined}><UserRound size={20} />Профиль</Link>
+      <button ref={menuButton} type="button"
       aria-label={menu ? 'Закрыть меню' : 'Открыть меню'} aria-expanded={menu}
       aria-controls={sidebarId} onClick={() => setMenu(!menu)}>
-      {menu ? <X size={21} aria-hidden="true" /> : <Menu size={21} aria-hidden="true" />}
+      {menu ? <X size={20} /> : <Ellipsis size={20} />}Ещё
     </button>
+    </nav>
     {menu && <button className={styles.drawerShade} tabIndex={-1} aria-label="Закрыть навигацию" onClick={() => { setMenu(false); menuButton.current?.focus(); }} />}
     <aside id={sidebarId} aria-label="Сайдбар StepFlow" className={styles.sidebar} data-open={menu}>
       <div className={styles.sidebarBrand}><Logo href="/catalog" onClick={() => setMenu(false)} /></div>

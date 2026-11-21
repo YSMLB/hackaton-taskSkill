@@ -44,6 +44,9 @@ func (s *Storage) seedDemo() error {
 		const oldTitle = "Демо · Собрать презентацию с Artem.AI"
 		const newTitle = "Демо · Собрать презентацию с Alina.AI"
 		changed := seedDemoUsernames(state)
+		if seedCatalogExamples(state) {
+			changed = true
+		}
 		for i, g := range state.Guides {
 			if g.ID == "demo-v1-pending" && g.Title == oldTitle {
 				state.Guides[i].Title = newTitle
@@ -152,6 +155,7 @@ func (s *Storage) seedDemo() error {
 			{ID: "demo-v1-read-" + p.ID, Text: "Демо · Учебные данные готовы к проверке", Href: "/catalog", CreatedAt: stamp, Read: true},
 		}
 	}
+	seedCatalogExamples(state)
 	payload, err := json.Marshal(state)
 	if err != nil {
 		return err
@@ -160,4 +164,56 @@ func (s *Storage) seedDemo() error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// Versioned fixtures run only when the demo dataset is enabled.
+func seedCatalogExamples(state *models.State) bool {
+	if state.DemoCatalogVersion >= 1 {
+		return false
+	}
+	state.DemoCatalogVersion = 1
+	topics := []struct{ slug, category, title, goal, first, second string }{
+		{"binary", "Алгоритмы", "Найти число бинарным поиском", "Найди 13 в отсортированном массиве.", "Запиши числа 2, 5, 8, 13, 21, 34, 55. Сравни 13 со средним элементом.", "Повтори для числа 34. После каждого сравнения зачеркни половину, где ответа быть не может."},
+		{"stack", "Структуры данных", "Проверить парные скобки стеком", "Проверь запись (()()) слева направо.", "Для каждой открывающей скобки положи жетон в стопку, для закрывающей сними один.", "Попробуй строку ())( . Если жетонов не хватило или после последнего символа остались лишние, баланс нарушен."},
+		{"sql", "SQL", "Посчитать заказы по городам", "Собери сводку по таблице orders.", "Выполни SELECT city, COUNT(*) FROM orders GROUP BY city.", "Сложи количества в группах и сравни с SELECT COUNT(*) FROM orders."},
+		{"join", "SQL", "Соединить клиентов с заказами", "Найди клиентов без заказов.", "Соедини customers и orders через LEFT JOIN по идентификатору клиента.", "Оставь строки с orders.id IS NULL и проверь результат на клиенте без покупок."},
+		{"keyboard", "Интерфейсы", "Проверить форму с клавиатуры", "Пройди регистрацию без мыши.", "Переходи между полями клавишей Tab и запиши последовательность фокуса.", "Вернись через Shift+Tab и проверь, что рамка фокуса видна на каждой кнопке."},
+		{"contrast", "Интерфейсы", "Проверить контраст подписи", "Измерь читаемость текста на карточке.", "Выбери подпись в инспекторе браузера и открой образец цвета текста.", "Проверь контраст относительно фона в обеих темах. Для обычного текста ориентируйся на 4,5:1."},
+		{"pivot", "Аналитика", "Собрать сводную таблицу", "Сравни выручку отделов за месяц.", "Выдели таблицу продаж с заголовками и вставь сводную таблицу.", "Перенеси отдел в строки, выручку в значения. Сверь общий итог с исходной суммой."},
+		{"median", "Аналитика", "Найти медиану времени ответа", "Оцени типичное время ответа команды.", "Упорядочь пять измерений по возрастанию и выбери третье значение.", "Замени максимальное время большим выбросом. Снова сравни медиану и среднее."},
+		{"retro", "Работа", "Провести короткую ретроспективу", "Согласуй одно улучшение на следующую неделю.", "Попроси каждого записать один удачный момент и одну трудность.", "Выбери одну трудность голосованием. Назначь ответственного и дату проверки."},
+		{"notes", "Учёба", "Разобрать билеты по интервалам", "Составь расписание повторений.", "Запиши вопросы на лицевой стороне карточек, ответы на обороте.", "Ответь без подсказки. Отложи верные карточки на три дня, остальные повтори завтра."},
+	}
+	people := []string{"demo-v1-member", "demo-v1-expert", "demo-v1-learner"}
+	for i, t := range topics {
+		owner := state.Accounts[people[i%len(people)]]
+		id := "demo-catalog-" + t.slug
+		steps := []models.Step{{ID: "prepare", Title: "Подготовка", Text: t.first, Checks: []string{"Исходные данные готовы"}}, {ID: "verify", Title: "Проверка результата", Text: t.second, Checks: []string{"Результат проверен"}}}
+		state.Guides = append(state.Guides, models.Instruction{ID: id, Title: t.title, Category: t.category, Description: t.goal, Minutes: 5 + i, Status: models.StatusPublished, Author: owner.Name, OwnerID: owner.ID, Owned: true, Revision: 1, Steps: steps})
+		state.Votes[id] = map[string]models.Vote{}
+		state.Runs[id] = map[string]models.Run{}
+		for j, actor := range people {
+			if actor == owner.ID {
+				continue
+			}
+			run := models.DefaultRun()
+			run.Visited = []string{"prepare"}
+			run.LastStepID = "prepare"
+			state.Runs[id][actor] = run
+			vote := models.VoteHelpful
+			if (i+j)%4 == 0 {
+				vote = models.VoteUnhelpful
+			}
+			state.Votes[id][actor] = vote
+		}
+	}
+	texts := []string{"Для 34 понадобилось ещё одно сравнение после середины.", "Попробуйте также число 1: границы должны сойтись без результата.", "Если элементов чётное количество, я выбираю левую середину."}
+	for i, body := range texts {
+		votes := map[string]models.Vote{}
+		for _, id := range people[:(i+1)%3] {
+			votes[id] = models.VoteHelpful
+		}
+		state.Comments = append(state.Comments, models.StepComment{ID: "demo-binary-comment-" + strconv.Itoa(i), GuideID: "demo-catalog-binary", StepID: "prepare", AuthorID: people[i], AuthorName: state.Accounts[people[i]].Name, Text: body, CreatedAt: time.Now().UTC().Add(time.Duration(i-3) * time.Hour).Format(time.RFC3339), Reactions: votes})
+	}
+	return true
 }

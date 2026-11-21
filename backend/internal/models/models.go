@@ -72,13 +72,17 @@ type Instruction struct {
 }
 
 type StepComment struct {
-	ID         string `json:"id"`
-	GuideID    string `json:"guideId"`
-	StepID     string `json:"stepId"`
-	AuthorID   string `json:"authorId"`
-	AuthorName string `json:"authorName"`
-	Text       string `json:"text"`
-	CreatedAt  string `json:"createdAt"`
+	Reactions  map[string]Vote `json:"reactions,omitempty"`
+	Likes      int             `json:"likes,omitempty"`
+	Dislikes   int             `json:"dislikes,omitempty"`
+	MyVote     Vote            `json:"myVote,omitempty"`
+	ID         string          `json:"id"`
+	GuideID    string          `json:"guideId"`
+	StepID     string          `json:"stepId"`
+	AuthorID   string          `json:"authorId"`
+	AuthorName string          `json:"authorName"`
+	Text       string          `json:"text"`
+	CreatedAt  string          `json:"createdAt"`
 }
 
 type Report struct {
@@ -126,7 +130,14 @@ type StepMetric struct {
 	QuestionAuthors int    `json:"questionAuthors"`
 }
 
+type ArticleCounts struct {
+	Views    int `json:"views"`
+	Likes    int `json:"likes"`
+	Dislikes int `json:"dislikes"`
+	Comments int `json:"commentCount"`
+}
 type GuideMetrics struct {
+	ArticleCounts
 	Started   int          `json:"started"`
 	Completed int          `json:"completed"`
 	Reports   []Report     `json:"reports"`
@@ -174,6 +185,8 @@ type AutoReviewAttempt struct {
 }
 
 type State struct {
+	LinkedReaders       map[string]map[string]bool   `json:"linkedReaders,omitempty"`
+	DemoCatalogVersion  int                          `json:"demoCatalogVersion,omitempty"`
 	AutoModeration      bool                         `json:"autoModeration,omitempty"`
 	ModerationEpoch     int                          `json:"moderationEpoch,omitempty"`
 	AutoReviews         map[string]AutoReviewAttempt `json:"autoReviews,omitempty"`
@@ -191,6 +204,7 @@ type State struct {
 }
 
 type PostStats struct {
+	ArticleCounts
 	ID        string   `json:"id"`
 	Title     string   `json:"title"`
 	Started   int      `json:"started"`

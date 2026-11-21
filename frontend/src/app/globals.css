@@ -96,7 +96,7 @@ a[href], select, summary, label:has(input[type="checkbox"]), label:has(input[typ
 }
 :root[data-color-scheme="dark"] {
   color-scheme: dark;
-  --paper: #11151d;
+  --paper: #18181B;
   --white: #172232;
   --graphite: #edf3fc;
   --muted: #b1bfd2;
@@ -335,4 +335,52 @@ body:has(.account-dialog[open]){overflow:hidden}
   .completion .guide-utilities { display: grid; grid-template-columns: minmax(0, 1fr); }
   .completion .guide-utilities .utility-actions > div { justify-self: start; }
   .editor-top .editor-actions { flex-wrap: wrap; }
+}
+
+.username-input { position: relative; min-width: 0; }
+.username-input > span {
+  position: absolute;
+  inset-inline-start: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted);
+  line-height: 1;
+}
+.field .username-input > input { padding-inline-start: 2rem; }
+.username-input:focus-within > span { color: var(--action); }
+
+.article-stats { min-width: 0; padding: clamp(14px, 3vw, 28px); border: 1px solid var(--line); background: var(--white); border-radius: 16px; }
+.article-stats p { margin: .7rem 0 1rem; font-size: .85rem; }
+.article-stats-scroll { max-width: 100%; overflow-x: auto; }
+.article-stats table { width: 100%; border-collapse: collapse; font-size: .83rem; font-variant-numeric: tabular-nums; }
+.article-stats th, .article-stats td { text-align: right; padding: .65rem; border-bottom: 1px solid var(--line); }
+.article-stats th:first-child { text-align: left; min-width: 11rem; }
+.topic-filters small { margin-inline-start: .25rem; font-variant-numeric: tabular-nums; opacity: .8; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .button, .icon-button, .category-filters button, .guide-card {
+    transition: background-color 150ms ease, border-color 150ms ease, box-shadow 180ms ease, transform 150ms ease;
+  }
+  .button:active:not(:disabled), .category-filters button:active { transform: scale(.98); }
+  .account-dialog[open], .player-step, .catalog-heading { animation: content-appear 190ms ease-out both; }
+  @media (hover: hover) {
+    .guide-card:hover { transform: translateY(-2px); box-shadow: 0 5px 18px var(--shadow); }
+  }
+  @keyframes content-appear { from { opacity: 0; translate: 0 4px; } to { opacity: 1; translate: 0 0; } }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root { --enter-content: content-appear 180ms ease-out backwards; }
+  .hero-copy, .hero-visual, .guide-grid > article, .step-topline, .toast,
+  .offline-guide, .article-stats, .registration-panel, .reports-panel,
+  details[open] > :not(summary), dialog[open] { animation: var(--enter-content); }
+  .hero-visual { animation-delay: 60ms; }
+  .progress-track > span { transition: width 240ms ease-out; }
+  .field :is(input, textarea, select), .step-nav-item, .checklist label,
+  nav :is(a, button), .step-number, .pill {
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  }
+  dialog[open]::backdrop { animation: backdrop-appear 150ms ease-out; }
+  @keyframes backdrop-appear { from { opacity: 0; } to { opacity: 1; } }
 }

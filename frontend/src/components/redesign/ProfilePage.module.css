@@ -101,3 +101,7 @@ dialog.aiDialog {
 .aiDialogActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .aiDialogActions .aiDisable { background: var(--danger-fill); color: #fff; }
 .aiDialogActions .aiDisable:hover { background: var(--danger-fill); color: #fff; filter: brightness(.9); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .content > * { animation: var(--enter-content); }
+}

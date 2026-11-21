@@ -12,7 +12,8 @@ export interface Run {
 export interface Report { id: string; guideId: string; stepId: string; text: string; authorId?: string; reply?: string }
 export interface ExpertReview { guideId: string; expertId: string; expertName: string; verified: boolean; text: string; createdAt: string }
 export interface StepMetric { stepId: string; started: number; completed: number; stopped: number; questions: number; questionAuthors?: number }
-export interface GuideMetrics { started: number; completed: number; reports: Report[]; steps: StepMetric[] }
+export interface ArticleCounts { views?: number; likes?: number; dislikes?: number; commentCount?: number }
+export interface GuideMetrics extends ArticleCounts { started: number; completed: number; reports: Report[]; steps: StepMetric[] }
 export interface TeamMember { id: string; name: string; username?: string }
 export interface UserMatch { name: string; username: string; selection: string }
 export interface Team { id: string; name: string; ownerId: string; memberIds: string[]; active: boolean; members?: TeamMember[] }
@@ -25,7 +26,7 @@ export interface ExpertSummary { id: string; name: string; email: string; active
 export interface WorkspaceData {
   autoModeration?: boolean;
   myQuestions?: Report[];
-  moderation?: { posts?: { id: string; title: string; started: number; completed: number; reports: Report[] | null }[]; decisions: ModerationDecision[]; experts: ExpertSummary[]; manualReviewNotes?: Record<string, string>; pausedReason?: string };
+  moderation?: { posts?: (ArticleCounts & { id: string; title: string; started: number; completed: number; reports: Report[] | null })[]; decisions: ModerationDecision[]; experts: ExpertSummary[]; manualReviewNotes?: Record<string, string>; pausedReason?: string };
   teams: Team[];
   notices: Notice[];
   guides: Instruction[];
@@ -60,6 +61,8 @@ export type Command =
   | { type: 'fork'; guideId: string }
   | { type: 'moderate'; guideId: string; revision?: number; decision: 'approve' | 'reject'; note: string }
   | { type: 'auto-moderation'; enabled: boolean }
+  | { type: 'view'; guideId: string }
+  | { type: 'comment-vote'; guideId: string; commentId: string; value: Vote | '' }
   | { type: 'vote'; guideId: string; value: Vote }
   | { type: 'comment' | 'help'; guideId: string; stepId: string; text: string }
   | { type: 'review'; guideId: string; verified: boolean; text: string }

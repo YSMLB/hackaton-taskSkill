@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ArticleStats } from './ArticleStats';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, ShieldCheck } from 'lucide-react';
@@ -56,7 +57,8 @@ export function Moderation() {
     </nav>
     {guideId && !target && <p role="status">Этой версии заявки уже нет в очереди.</p>}
     {section.id === 'stats' ? <section className="reports-panel">
-      <h2>Статистика и вопросы по инструкциям</h2>
+      <ArticleStats ranking rows={data.moderation?.posts ?? []} />
+      <h2>Прохождения и вопросы</h2>
       {(data.moderation?.posts ?? []).map(post => <article key={post.id}>
         <h3>{post.title}</h3>
         <p>Начали {post.started} · Завершили {post.completed} · Вопросов {post.reports?.length ?? 0}</p>

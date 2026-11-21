@@ -1,9 +1,11 @@
 'use client';
 
+import { UsernameInput } from './UsernameInput';
 import Link from 'next/link';
+import { ArticleStats } from './ArticleStats';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, type ChangeEvent, type FormEvent } from 'react';
-import { BookOpen, Camera, CreditCard, FolderOpen, LogOut, Settings2, UserRound, Users } from 'lucide-react';
+import { BarChart3, BookOpen, Camera, CreditCard, FolderOpen, LogOut, Settings2, UserRound, Users } from 'lucide-react';
 import type { Profile } from '@shared/community';
 import { RegistrationGate, WorkShell } from './Chrome';
 import { ProfileAvatar } from './ProfileAvatar';
@@ -39,14 +41,15 @@ export function ProfilePage() {
 }
 
 function ProfileForm({ profile }: { profile: Profile }) {
-  const { send, pending, notify } = useStore();
+  const { data, send, pending, notify } = useStore();
   const requested = useSearchParams().get('tab');
-  const tab = requested === 'forks' ? 'author' : requested === 'library' || requested === 'author' || requested === 'settings' ? requested : 'details';
+  const tab = requested === 'forks' ? 'author' : requested === 'library' || requested === 'author' || requested === 'stats' || requested === 'settings' ? requested : 'details';
   const initialAuthorFilter = requested === 'forks' ? 'forks' : 'all';
   const tabs = [
     { id: 'details', title: 'Личные данные', Icon: UserRound },
     { id: 'library', title: 'Мои прохождения', Icon: BookOpen },
     { id: 'author', title: 'Мои инструкции', Icon: FolderOpen },
+    { id: 'stats', title: 'Статистика статей', Icon: BarChart3 },
     { id: 'settings', title: 'Настройки сайта', Icon: Settings2 },
   ];
   const previousDrafts = localDrafts(profile.email);
@@ -126,7 +129,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         <button type="button" className={styles.logout} disabled={pending} onClick={async () => { if (await send({ type: 'logout' })) router.push('/'); }}><LogOut size={18} aria-hidden="true" />Выйти из аккаунта</button>
       </aside>
       <section className={styles.content}>
-        {tab === 'settings' ? <SiteSettings /> : tab !== 'details' ? <Catalog key={`${tab}:${initialAuthorFilter}`} screen={tab} initialAuthorFilter={initialAuthorFilter} embedded /> : <form className={styles.panel} onSubmit={save} onChange={() => { setError(''); setStatus(''); }}>
+        {tab === 'stats' ? <ArticleStats rows={data.guides.filter(g => data.analytics[g.id]).map(g => ({ id: g.id, title: g.title, ...data.analytics[g.id] }))} /> : tab === 'settings' ? <SiteSettings /> : tab !== 'details' ? <Catalog key={`${tab}:${initialAuthorFilter}`} screen={tab} initialAuthorFilter={initialAuthorFilter} embedded /> : <form className={styles.panel} onSubmit={save} onChange={() => { setError(''); setStatus(''); }}>
         <h2>Личные данные</h2>
         <div className={styles.photoRow}>
           <ProfileAvatar photo={avatar} name={name} size={80} />
@@ -148,7 +151,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         </div>
         <div className="field">
           <label htmlFor="profile-username">Юзернейм</label>
-          <input id="profile-username" autoComplete="username" autoCapitalize="none" spellCheck={false} maxLength={31} pattern="@?[A-Za-z0-9_]{3,30}" required={Boolean(profile.username)} placeholder="@alex_01" aria-describedby="profile-username-hint" value={username} onChange={event => setUsername(event.target.value)} />
+          <UsernameInput id="profile-username" hintId="profile-username-hint" required={Boolean(profile.username)} value={username} onChange={setUsername} />
           <small id="profile-username-hint">По юзернейму тебя можно добавить в команду. Допустимы 3–30 латинских букв, цифр или подчёркиваний.</small>
         </div>
         <div className="field">

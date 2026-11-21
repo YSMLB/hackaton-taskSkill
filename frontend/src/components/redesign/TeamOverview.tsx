@@ -1,5 +1,6 @@
 'use client';
 
+import { UsernameInput } from './UsernameInput';
 import Link from 'next/link';
 import { DeleteGuide } from './DeleteGuide';
 import { useSearchParams } from 'next/navigation';
@@ -123,7 +124,7 @@ function MemberAccess({ teamId }: { teamId: string }) {
     }}>
       <div className="field">
         <label htmlFor="team-member-username">Юзернейм участника</label>
-        <input id="team-member-username" placeholder="@alex_01" autoCapitalize="none" spellCheck={false} required maxLength={31} pattern="@?[A-Za-z0-9_]{3,30}" disabled={pending} value={username} onChange={event => { setUsername(event.target.value); setMatch(null); }} />
+        <UsernameInput id="team-member-username" autoComplete="off" disabled={pending} required value={username} onChange={value => { setUsername(value); setMatch(null); }} />
       </div>
       <button type="submit" className="button button-outline" disabled={pending || !username.trim()}>Найти участника</button>
     </form>

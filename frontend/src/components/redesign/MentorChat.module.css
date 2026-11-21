@@ -131,3 +131,7 @@
   .composer textarea { font-size: 1rem; }
   .standalone { margin-top: 0; }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .answer, .attachment { animation: var(--enter-content); }
+}

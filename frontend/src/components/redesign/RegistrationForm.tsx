@@ -1,5 +1,6 @@
 'use client';
 
+import { UsernameInput } from './UsernameInput';
 import { useId, useState } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import { useStore } from './store';
@@ -30,7 +31,7 @@ export function RegistrationForm({ onComplete, mode = 'register', onModeChange }
     </div>}
     {!signingIn && <div className="field">
       <label htmlFor={`${prefix}-username`}>Юзернейм</label>
-      <input id={`${prefix}-username`} autoComplete="username" autoCapitalize="none" spellCheck={false} required maxLength={31} pattern="@?[A-Za-z0-9_]{3,30}" placeholder="@alex_01" value={username} aria-describedby={`${prefix}-username-hint`} onChange={event => setUsername(event.target.value)} />
+      <UsernameInput id={`${prefix}-username`} hintId={`${prefix}-username-hint`} required value={username} onChange={setUsername} />
       <small id={`${prefix}-username-hint`}>3–30 латинских букв, цифр или подчёркиваний. По юзернейму тебя найдут для приглашения в команду.</small>
     </div>}
     <div className="field">
