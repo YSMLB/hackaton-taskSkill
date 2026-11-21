@@ -44,7 +44,7 @@ function AccountDialog({ dialogRef, mode = 'register', onModeChange }: { dialogR
 
 export function LandingHeader({ dock = false }: { dock?: boolean }) {
   const { menu, setMenu, menuButton } = useHeaderMenu();
-  const { profile, ready } = useStore();
+  const { profile } = useStore();
   const [mode, setMode] = useState<AuthMode>('register');
   const [atFooter, setAtFooter] = useState(false);
   const footer = useRef<HTMLElement>(null);
@@ -65,7 +65,7 @@ export function LandingHeader({ dock = false }: { dock?: boolean }) {
       <Logo />
       {!dock && <nav className="desktop-nav" aria-label="О платформе"><Link href="/#advantages">Почему StepFlow</Link><Link href="/#demo">Демо</Link></nav>}
       <div className="header-actions">
-        {profile ? <><Link className={`text-button ${styles.landingLogin}`} href="/profile"><UserRound size={17} />Профиль</Link><Link className="button button-dark header-cta" href="/catalog">Открыть каталог <ArrowUpRight size={17} /></Link></> : <><button className={`text-button ${styles.landingLogin}`} onClick={() => openAccount('login')} disabled={!ready}>Войти</button><button className="button button-dark header-cta" onClick={() => openAccount('register')} disabled={!ready}>Регистрация <ArrowUpRight size={17} /></button></>}
+        {profile ? <><Link className={`text-button ${styles.landingLogin}`} href="/profile"><UserRound size={17} />Профиль</Link><Link className="button button-dark header-cta" href="/catalog">Открыть каталог <ArrowUpRight size={17} /></Link></> : <><button className={`text-button ${styles.landingLogin}`} onClick={() => openAccount('login')}>Войти</button><button className="button button-dark header-cta" onClick={() => openAccount('register')}>Регистрация <ArrowUpRight size={17} /></button></>}
         <button ref={menuButton} className="icon-button mobile-menu-button" aria-label={menu ? 'Закрыть меню' : 'Открыть меню'} aria-expanded={menu} aria-controls="landing-mobile-nav" onClick={() => setMenu(!menu)}>{menu ? <X /> : <Menu />}</button>
       </div>
     </div>

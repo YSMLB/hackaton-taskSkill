@@ -15,7 +15,7 @@
 a[href], select, summary, label:has(input[type="checkbox"]), label:has(input[type="radio"]) { cursor: pointer; }
 .hero h1 { white-space: normal; }
 .hero-copy > p { max-width: 480px; }
-.benefit-grid .benefit-card { background: transparent; color: var(--graphite); border-top: 1px solid var(--line); border-radius: 0; min-height: 0; padding: 24px 0; }
+.advantages .benefit-grid > .benefit-card { background: transparent; color: var(--graphite); border-top: 1px solid var(--line); border-radius: 0; min-height: 0; padding: 24px 0; }
 .benefit-grid .benefit-card p { color: var(--muted); }
 .benefit-card .mini-check, .benefit-card .mini-message, .benefit-card .mini-path { display: none; }
 .guide-card-art:has(.guide-cover) { aspect-ratio: 16 / 9; height: auto; }
@@ -96,7 +96,7 @@ a[href], select, summary, label:has(input[type="checkbox"]), label:has(input[typ
 }
 :root[data-color-scheme="dark"] {
   color-scheme: dark;
-  --paper: #0e1623;
+  --paper: #11151d;
   --white: #172232;
   --graphite: #edf3fc;
   --muted: #b1bfd2;
