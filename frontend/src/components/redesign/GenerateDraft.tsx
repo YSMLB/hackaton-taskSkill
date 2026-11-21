@@ -7,7 +7,7 @@ import styles from './GenerateDraft.module.css';
 type Draft = Pick<Instruction, 'title' | 'description' | 'category' | 'minutes' | 'steps'>;
 type Variant = Draft & Pick<Instruction, 'id'>;
 
-export function GenerateDraft({ onApply }: { onApply: (draft: Draft) => boolean }) {
+export function GenerateDraft({ onApply }: { onApply: (draft: Draft) => Promise<boolean> }) {
   const [prompt, setPrompt] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
@@ -81,9 +81,9 @@ export function GenerateDraft({ onApply }: { onApply: (draft: Draft) => boolean 
       <h2>{selected.title}</h2><p>{selected.description}</p>
       <ol className={styles.steps}>{selected.steps.map((step,i) => <li key={i}><strong>{step.title}</strong><p>{step.text}</p>
         {step.code && <pre><code>{step.code}</code></pre>}<ul>{step.checks.map((c,j) => <li key={j}>{c}</li>)}</ul></li>)}</ol>
-      <button type="button" className="button button-dark" onClick={() => {
+      <button type="button" className="button button-dark" onClick={async () => {
         const { title, description, category, minutes, steps } = selected;
-        if (onApply({ title, description, category, minutes, steps })) setApplied(true);
+        if (await onApply({ title, description, category, minutes, steps })) setApplied(true);
       }}>Открыть в редакторе</button>
     </> : <>
       <div className={styles.heading}><div><h2>Выбери вариант инструкции</h2><p>{lastTopic}</p></div>

@@ -44,6 +44,9 @@ func (s *Storage) seedDemo() error {
 		const oldTitle = "Демо · Собрать презентацию с Artem.AI"
 		const newTitle = "Демо · Собрать презентацию с Alina.AI"
 		changed := seedDemoUsernames(state)
+		if seedTeamExamples(state) {
+			changed = true
+		}
 		if seedCatalogExamples(state) {
 			changed = true
 		}
@@ -156,6 +159,7 @@ func (s *Storage) seedDemo() error {
 		}
 	}
 	seedCatalogExamples(state)
+	seedTeamExamples(state)
 	payload, err := json.Marshal(state)
 	if err != nil {
 		return err
@@ -214,6 +218,45 @@ func seedCatalogExamples(state *models.State) bool {
 			votes[id] = models.VoteHelpful
 		}
 		state.Comments = append(state.Comments, models.StepComment{ID: "demo-binary-comment-" + strconv.Itoa(i), GuideID: "demo-catalog-binary", StepID: "prepare", AuthorID: people[i], AuthorName: state.Accounts[people[i]].Name, Text: body, CreatedAt: time.Now().UTC().Add(time.Duration(i-3) * time.Hour).Format(time.RFC3339), Reactions: votes})
+	}
+	return true
+}
+
+func seedTeamExamples(state *models.State) bool {
+	if state.DemoTeamExamples {
+		changed := false
+		for i := range state.Guides {
+			guide := &state.Guides[i]
+			if guide.TeamID != "" && strings.HasPrefix(guide.ID, "demo-team-") && guide.Status == models.StatusPending && guide.Revision == 1 && guide.ReviewedAt == "" {
+				guide.Status = models.StatusPublished
+				guide.ReviewedAt = guide.SubmittedAt
+				guide.ReviewedBy = state.Accounts["demo-v1-admin"].Name
+				delete(state.AutoReviews, guide.ID)
+				changed = true
+			}
+		}
+		return changed
+	}
+	state.DemoTeamExamples = true
+	examples := []struct{ title, goal, action, check string }{
+		{"Подготовить командное демо", "Соберите короткий показ проекта и распределите роли.", "Запишите сценарий из трёх действий. Назначьте ведущего и человека, который покажет результат.", "Команда провела одну репетицию по таймеру"},
+		{"Передать задачу участнику", "Передайте задачу так, чтобы коллега мог начать самостоятельно.", "Добавьте ссылку на материалы и опишите ожидаемый результат. Попросите коллегу пересказать следующий шаг.", "Коллега подтвердил следующий шаг"},
+	}
+	for _, team := range state.Teams {
+		owner, ok := state.Accounts[team.OwnerID]
+		if !ok {
+			continue
+		}
+		for i, example := range examples {
+			state.Guides = append(state.Guides, models.Instruction{
+				ID: "demo-team-" + team.ID + "-" + strconv.Itoa(i+1), TeamID: team.ID,
+				Title: "Демо · " + example.title, Description: example.goal, Category: "Другое",
+				Minutes: 10, Author: owner.Name, OwnerID: team.OwnerID, Owned: true,
+				Status: models.StatusPublished, Revision: 1,
+				SubmittedAt: time.Now().UTC().Format(time.RFC3339), ReviewedAt: time.Now().UTC().Format(time.RFC3339), ReviewedBy: state.Accounts["demo-v1-admin"].Name,
+				Steps: []models.Step{{ID: "start", Title: example.title, Text: example.action, Checks: []string{example.check}}},
+			})
+		}
 	}
 	return true
 }

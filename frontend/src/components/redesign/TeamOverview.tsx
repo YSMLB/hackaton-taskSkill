@@ -4,6 +4,7 @@ import { UsernameInput } from './UsernameInput';
 import Link from 'next/link';
 import { DeleteGuide } from './DeleteGuide';
 import { useSearchParams } from 'next/navigation';
+import { useConfirmation } from './ConfirmDialog';
 import { Suspense, useState } from 'react';
 import { ArrowLeft, ChevronRight, FileText, Plus } from 'lucide-react';
 import type { UserMatch } from '@shared/workspace-data';
@@ -28,6 +29,7 @@ export function TeamOverview() {
 function Overview({ userId }: { userId: string }) {
   const id = useSearchParams().get('id');
   const { data, pending, send, notify } = useStore();
+  const { confirm, modal } = useConfirmation();
   const team = data.teams.find(item => item.id === id);
   const back = <Link className="back-link" href="/team"><ArrowLeft size={17} aria-hidden="true" />Мои команды</Link>;
   if (!team) return <section className="empty-state">
@@ -42,10 +44,12 @@ function Overview({ userId }: { userId: string }) {
     .slice(0, 5);
   const members = team.members ?? [];
   const owner = members.find(member => member.id === team.ownerId);
+
   const roster = owner ? [owner, ...members.filter(member => member.id !== owner.id)] : members;
   const allGuides = team.active ? guides : guides.filter(guide => guide.status === 'published');
 
   return <div className={styles.overview}>
+    {modal}
     {back}
     <header className={styles.header}>
       <h1>{team.name}</h1>
@@ -78,7 +82,7 @@ function Overview({ userId }: { userId: string }) {
           </span>
           {team.active && team.ownerId === userId && member.id !== userId &&
             <button type="button" className="text-button" disabled={pending} aria-label={`Отозвать доступ: ${member.name}`} onClick={async () => {
-              if (!window.confirm(`Отозвать у ${member.name} доступ к команде «${team.name}»?`)) return;
+              if (!(await confirm({ title: 'Отозвать доступ?', message: `Отозвать у ${member.name} доступ к команде «${team.name}»?`, action: 'Отозвать доступ' }))) return;
               if (await send({ type: 'team-member', teamId: team.id, memberId: member.id, remove: true })) notify('Доступ отозван');
             }}>Отозвать доступ</button>}
         </li>)}</ul> : <p className={styles.empty}>Список участников пока недоступен.</p>}

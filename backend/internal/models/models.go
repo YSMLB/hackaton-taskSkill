@@ -185,6 +185,7 @@ type AutoReviewAttempt struct {
 }
 
 type State struct {
+	DemoTeamExamples    bool                         `json:"demoTeamExamples,omitempty"`
 	LinkedReaders       map[string]map[string]bool   `json:"linkedReaders,omitempty"`
 	DemoCatalogVersion  int                          `json:"demoCatalogVersion,omitempty"`
 	AutoModeration      bool                         `json:"autoModeration,omitempty"`
